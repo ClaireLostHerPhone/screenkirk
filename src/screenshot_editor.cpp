@@ -32,6 +32,224 @@ CEditorFloatingToolbar *CEditorFloatingToolbar::CreateAndShow()
 }
 
 //
+// CScreenshotEditorRendererGDI
+//
+
+HRESULT CScreenshotEditorRendererGDI::Initialize()
+{
+    _MakeDimmedScreenshot();
+    return S_OK;
+}
+
+HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
+{
+    // Whether or not to use a separate backbuffer. We avoid creating these
+    // GDI objects unless required for rendering.
+    bool fSeparateBackbuffer = (_fHasAnySelectionMade);
+
+    HDC hdcScreenshot = CreateCompatibleDC(hdc);
+    HGDIOBJ hObjOldSS = (HGDIOBJ)SelectObject(hdcScreenshot, _hbmScreenshotDimmed);
+
+    HDC hdcBackbuffer = nullptr;
+    HBITMAP hbmBackbuffer = nullptr;
+    HGDIOBJ hObjOldBB = nullptr;
+    if (fSeparateBackbuffer)
+    {
+        hdcBackbuffer = CreateCompatibleDC(hdc);
+        hbmBackbuffer = CreateCompatibleBitmap(hdc, RECTWIDTH(*prcPaint), RECTHEIGHT(*prcPaint));
+        hObjOldBB = (HGDIOBJ)SelectObject(hdcBackbuffer, hbmBackbuffer);
+
+        BitBlt(
+            hdcBackbuffer,
+            0, 0,
+            RECTWIDTH(*prcPaint), RECTHEIGHT(*prcPaint),
+            hdcScreenshot,
+            prcPaint->left, prcPaint->top,
+            SRCCOPY
+        );
+        POINT ptOriginOld;
+        SetViewportOrgEx(hdcBackbuffer, -prcPaint->left, -prcPaint->top, &ptOriginOld);
+    }
+    else
+    {
+        hdcBackbuffer = hdcScreenshot;
+    }
+
+    if (_fHasAnySelectionMade)
+    {
+        HDC hdcSelection = fSeparateBackbuffer
+            ? hdcBackbuffer
+            : hdc;
+
+        // Highlight the selected area of the screenshot:
+        SelectObject(hdcScreenshot, hObjOldSS);
+        hObjOldSS = (HGDIOBJ)SelectObject(hdcScreenshot, _pScreenshotCtx->_hbmScreenshot);
+        BitBlt(
+            hdcSelection,
+            _rcSelection.left, _rcSelection.top,
+            RECTWIDTH(_rcSelection), RECTHEIGHT(_rcSelection),
+            hdcScreenshot,
+            _rcSelection.left, _rcSelection.top,
+            SRCCOPY
+        );
+
+        // Draw the selection outline:
+        HPEN hDotPen = CreatePen(PS_DOT, 1, RGB(128, 128, 128));
+        hObjOldBB = SelectObject(hdcSelection, hDotPen);
+        HGDIOBJ hOldBrush = SelectObject(hdcSelection, GetStockObject(HOLLOW_BRUSH));
+        int iOldBkMode = SetBkMode(hdcSelection, TRANSPARENT);
+        int iOldRop = SetROP2(hdcSelection, R2_XORPEN);
+
+        Rectangle(hdcSelection, _rcSelection.left, _rcSelection.top, _rcSelection.right, _rcSelection.bottom);
+
+        SetROP2(hdcSelection, iOldRop);
+        SetBkMode(hdcSelection, iOldBkMode);
+        SelectObject(hdcSelection, hOldBrush);
+        SelectObject(hdcSelection, hObjOldBB);
+        DeleteObject(hDotPen);
+
+        SelectObject(hdcScreenshot, hObjOldSS);
+    }
+
+    HGDIOBJ hObjOld = (HGDIOBJ)SelectObject(hdc, _pScreenshotCtx->_hbmScreenshot);
+    POINT ptOriginOld;
+    if (fSeparateBackbuffer)
+    {
+        SetViewportOrgEx(hdcBackbuffer, 0, 0, &ptOriginOld);
+        BitBlt(
+            hdc,
+            prcPaint->left, prcPaint->top,
+            RECTWIDTH(*prcPaint), RECTHEIGHT(*prcPaint),
+            hdcBackbuffer,
+            0, 0,
+            SRCCOPY
+        );
+    }
+    else
+    {
+        BitBlt(
+            hdc,
+            prcPaint->left, prcPaint->top,
+            RECTWIDTH(*prcPaint), RECTHEIGHT(*prcPaint),
+            hdcBackbuffer,
+            prcPaint->left, prcPaint->top,
+            SRCCOPY
+        );
+    }
+    SelectObject(hdc, hObjOld);
+
+    if (fSeparateBackbuffer)
+    {
+        SelectObject(hdcBackbuffer, hObjOldBB);
+        DeleteObject(hbmBackbuffer);
+        DeleteDC(hdcBackbuffer);
+    }
+
+    SelectObject(hdcScreenshot, hObjOldSS);
+    DeleteDC(hdcScreenshot);
+
+    _iFlags = RENDERF_NONE;
+
+    return S_OK;
+}
+
+HRESULT CScreenshotEditorRendererGDI::UpdateSelection(RECT *prcNew)
+{
+    RECT rcSelectionOld = _rcSelection;
+    _rcSelection = *prcNew;
+
+    if (RECTWIDTH(_rcSelection) > RECTWIDTH(rcSelectionOld) && RECTHEIGHT(_rcSelection) > RECTHEIGHT(rcSelectionOld))
+    {
+        _iFlags |= RENDERF_SELECTGROW;
+    }
+
+    if (_rcSelection.left != rcSelectionOld.left)
+    {
+        _iFlags |= RENDERF_SELECTCHANGEWEST;
+    }
+    if (_rcSelection.top != rcSelectionOld.top)
+    {
+        _iFlags |= RENDERF_SELECTCHANGENORTH;
+    }
+    if (_rcSelection.right != rcSelectionOld.right)
+    {
+        _iFlags |= RENDERF_SELECTCHANGEEAST;
+    }
+    if (_rcSelection.bottom != rcSelectionOld.bottom)
+    {
+        _iFlags |= RENDERF_SELECTCHANGESOUTH;
+    }
+    
+    RECT rcUnion;
+    UnionRect(&rcUnion, &rcSelectionOld, &_rcSelection);
+    InvalidateRect(_hwndRenderTarget, &rcUnion, FALSE);
+
+    _fHasAnySelectionMade = RECTWIDTH(_rcSelection) > 0 || RECTHEIGHT(_rcSelection) > 0;
+
+    return S_OK;
+}
+
+HRESULT CScreenshotEditorRendererGDI::_MakeDimmedScreenshot()
+{
+    HDC hdcDesktop = GetDC(HWND_DESKTOP);
+    if (hdcDesktop)
+    {
+        HDC hdcDimmed = CreateCompatibleDC(hdcDesktop);
+        if (hdcDimmed)
+        {
+            BITMAPINFO bmi = { 0 };
+            bmi.bmiHeader.biSize = sizeof(bmi);
+            bmi.bmiHeader.biWidth = _pScreenshotCtx->_sizeDesktop.cx;
+            bmi.bmiHeader.biHeight = _pScreenshotCtx->_sizeDesktop.cy;
+            bmi.bmiHeader.biPlanes = 1;
+            bmi.bmiHeader.biBitCount = 32;
+            bmi.bmiHeader.biCompression = BI_RGB;
+            bmi.bmiHeader.biSizeImage = 0;
+
+            void *pvPixels = nullptr;
+            _hbmScreenshotDimmed = CreateDIBSection(hdcDimmed, &bmi, DIB_RGB_COLORS, &pvPixels, nullptr, 0);
+            if (_hbmScreenshotDimmed)
+            {
+                HGDIOBJ hObjOld = SelectObject(hdcDimmed, _hbmScreenshotDimmed);
+
+                HDC hdcOrig = CreateCompatibleDC(hdcDesktop);
+                HGDIOBJ hObjOld2 = SelectObject(hdcOrig, _pScreenshotCtx->_hbmScreenshot);
+
+                BitBlt(hdcDimmed, 0, 0, _pScreenshotCtx->_sizeDesktop.cx, _pScreenshotCtx->_sizeDesktop.cy, hdcOrig, 0, 0, SRCCOPY);
+
+                SelectObject(hdcOrig, hObjOld2);
+                DeleteDC(hdcOrig);
+
+                ULONG *pulSrc = (ULONG *)pvPixels;
+                constexpr static int c_iDimAmount = 0xFF * 0.75;
+                int cLength = _pScreenshotCtx->_sizeDesktop.cx * _pScreenshotCtx->_sizeDesktop.cy;
+
+                for (int i = cLength - 1; i >= 0; i--)
+                {
+                    ULONG ulR = GetRValue(*pulSrc);
+                    ULONG ulG = GetGValue(*pulSrc);
+                    ULONG ulB = GetBValue(*pulSrc);
+                    ULONG ulDim = (0xFF - c_iDimAmount);
+                    ulR = (ulR * c_iDimAmount + ulDim) >> 8;
+                    ulG = (ulG * c_iDimAmount + ulDim) >> 8;
+                    ulB = (ulB * c_iDimAmount + ulDim) >> 8;
+                    *pulSrc = (*pulSrc & 0xFF000000) | RGB(ulR, ulG, ulB);
+                    pulSrc++;
+                }
+
+                SelectObject(hdcDimmed, hObjOld);
+            }
+
+            DeleteDC(hdcDimmed);
+        }
+
+        ReleaseDC(HWND_DESKTOP, hdcDesktop);
+    }
+
+    return S_OK;
+}
+
+//
 // CScreenshotEditorWindow
 //
 
@@ -42,7 +260,12 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
         case WM_CREATE:
         {
             _pScreenshotCtx = (CScreenshotContext *)(((CREATESTRUCT *)lParam)->lpCreateParams);
-            _MakeDimmedScreenshot();
+            _pRenderer = new CScreenshotEditorRendererGDI(_pScreenshotCtx, hwnd);
+            if (FAILED(_pRenderer->Initialize()))
+            {
+                MessageBox(nullptr, TEXT("Failed to create renderer."), TEXT("Error"), MB_OK | MB_ICONERROR);
+                return -1;
+            }
             _ChangeTool(SSET_SELECT);
             break;
         }
@@ -110,8 +333,8 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
 
 LRESULT CScreenshotEditorWindow::_OnDestroy()
 {
+    delete _pRenderer;
     delete _pScreenshotCtx;
-    DeleteObject(_hbmScreenshotDimmed);
     return 0;
 }
 
@@ -127,91 +350,8 @@ LRESULT CScreenshotEditorWindow::_OnPaint()
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(_hwnd, &ps);
 
-    // Whether or not to use a separate backbuffer. We avoid creating these
-    // GDI objects unless required for rendering.
-    bool fSeparateBackbuffer = (_fHasAnySelectionMade);
-
-    HDC hdcScreenshot = CreateCompatibleDC(hdc);
-    HGDIOBJ hObjOldSS = (HGDIOBJ)SelectObject(hdcScreenshot, _hbmScreenshotDimmed);
-
-    HDC hdcBackbuffer = nullptr;
-    HBITMAP hbmBackbuffer = nullptr;
-    HGDIOBJ hObjOldBB = nullptr;
-    if (fSeparateBackbuffer)
-    {
-        hdcBackbuffer = CreateCompatibleDC(hdc);
-        hbmBackbuffer = CreateCompatibleBitmap(hdc, _pScreenshotCtx->_sizeDesktop.cx, _pScreenshotCtx->_sizeDesktop.cy);
-        hObjOldBB = (HGDIOBJ)SelectObject(hdcBackbuffer, hbmBackbuffer);
-
-        BitBlt(
-            hdcBackbuffer,
-            ps.rcPaint.left, ps.rcPaint.top,
-            _pScreenshotCtx->_sizeDesktop.cx, _pScreenshotCtx->_sizeDesktop.cy,
-            hdcScreenshot,
-            ps.rcPaint.left, ps.rcPaint.top,
-            SRCCOPY
-        );
-    }
-    else
-    {
-        hdcBackbuffer = hdcScreenshot;
-    }
-
-    if (_fHasAnySelectionMade)
-    {
-        HDC hdcSelection = fSeparateBackbuffer
-            ? hdcBackbuffer
-            : hdc;
-
-        // Highlight the selected area of the screenshot:
-        SelectObject(hdcScreenshot, hObjOldSS);
-        hObjOldSS = (HGDIOBJ)SelectObject(hdcScreenshot, _pScreenshotCtx->_hbmScreenshot);
-        BitBlt(
-            hdcSelection,
-            _rcSelection.left, _rcSelection.top,
-            RECTWIDTH(_rcSelection), RECTHEIGHT(_rcSelection),
-            hdcScreenshot,
-            _rcSelection.left, _rcSelection.top,
-            SRCCOPY
-        );
-
-        // Draw the selection outline:
-        HPEN hDotPen = CreatePen(PS_DOT, 1, RGB(128, 128, 128));
-        hObjOldBB = SelectObject(hdcSelection, hDotPen);
-        HGDIOBJ hOldBrush = SelectObject(hdcSelection, GetStockObject(HOLLOW_BRUSH));
-        int iOldBkMode = SetBkMode(hdcSelection, TRANSPARENT);
-        int iOldRop = SetROP2(hdcSelection, R2_XORPEN);
-
-        Rectangle(hdcSelection, _rcSelection.left, _rcSelection.top, _rcSelection.right, _rcSelection.bottom);
-
-        SetROP2(hdcSelection, iOldRop);
-        SetBkMode(hdcSelection, iOldBkMode);
-        SelectObject(hdcSelection, hOldBrush);
-        SelectObject(hdcSelection, hObjOldBB);
-        DeleteObject(hDotPen);
-    }
-
-    HGDIOBJ hObjOld = (HGDIOBJ)SelectObject(hdc, _pScreenshotCtx->_hbmScreenshot);
-    BitBlt(
-        hdc,
-        ps.rcPaint.left, ps.rcPaint.top,
-        RECTWIDTH(ps.rcPaint), RECTHEIGHT(ps.rcPaint),
-        hdcBackbuffer,
-        ps.rcPaint.left, ps.rcPaint.top,
-        SRCCOPY
-    );
-
-    SelectObject(hdc, hObjOld);
-
-    if (fSeparateBackbuffer)
-    {
-        SelectObject(hdcBackbuffer, hObjOldBB);
-        DeleteObject(hbmBackbuffer);
-        DeleteDC(hdcBackbuffer);
-    }
-
-    SelectObject(hdcScreenshot, hObjOldSS);
-    DeleteDC(hdcScreenshot);
+    _pRenderer->Paint(hdc, &ps.rcPaint);
+    
     EndPaint(_hwnd, &ps);
     return 0;
 }
@@ -273,7 +413,6 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
         if (_tool == SSET_SELECT)
         {
             _fHasAnySelectionMade = true;
-            RECT rcSelectionOld = _rcSelection;
 
             _rcSelection.left = x < _ptSelectionOrigin.x
                 ? x
@@ -288,9 +427,7 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
                 ? y
                 : _ptSelectionOrigin.y;
 
-            RECT rcUpdate;
-            UnionRect(&rcUpdate, &_rcSelection, &rcSelectionOld);
-            InvalidateRect(_hwnd, &rcUpdate, FALSE);
+            _pRenderer->UpdateSelection(&_rcSelection);
         }
         else if (_tool == SSET_DRAG)
         {
@@ -306,15 +443,10 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
 
                 OffsetRect(&_rcSelection, iX, iY);
 
-                RECT rcUpdate;
-                UnionRect(&rcUpdate, &_rcSelection, &_rcDragBegin);
-                UnionRect(&rcUpdate, &rcUpdate, &rcOldSelection);
-                InvalidateRect(_hwnd, &rcUpdate, FALSE);
+                _pRenderer->UpdateSelection(&_rcSelection);
             }
             else // Sizing modes:
             {
-                RECT rcOldSelection = _rcSelection;
-
                 if (_dragMode & DRAGM_SIZEW)
                 {
                     _rcSelection.left = x;
@@ -333,9 +465,7 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
                     _rcSelection.bottom = y;
                 }
 
-                RECT rcUpdate;
-                UnionRect(&rcUpdate, &_rcSelection, &rcOldSelection);
-                InvalidateRect(_hwnd, &rcUpdate, FALSE);
+                _pRenderer->UpdateSelection(&_rcSelection);
             }
         }
     }
@@ -552,72 +682,12 @@ void CScreenshotEditorWindow::_UpdateCursor()
     SetCursor(hcur);
 }
 
-HRESULT CScreenshotEditorWindow::_MakeDimmedScreenshot()
-{
-    HDC hdcDesktop = GetDC(HWND_DESKTOP);
-    if (hdcDesktop)
-    {
-        HDC hdcDimmed = CreateCompatibleDC(hdcDesktop);
-        if (hdcDimmed)
-        {
-            BITMAPINFO bmi = { 0 };
-            bmi.bmiHeader.biSize = sizeof(bmi);
-            bmi.bmiHeader.biWidth = _pScreenshotCtx->_sizeDesktop.cx;
-            bmi.bmiHeader.biHeight = _pScreenshotCtx->_sizeDesktop.cy;
-            bmi.bmiHeader.biPlanes = 1;
-            bmi.bmiHeader.biBitCount = 32;
-            bmi.bmiHeader.biCompression = BI_RGB;
-            bmi.bmiHeader.biSizeImage = 0;
-
-            void *pvPixels = nullptr;
-            _hbmScreenshotDimmed = CreateDIBSection(hdcDimmed, &bmi, DIB_RGB_COLORS, &pvPixels, nullptr, 0);
-            if (_hbmScreenshotDimmed)
-            {
-                HGDIOBJ hObjOld = SelectObject(hdcDimmed, _hbmScreenshotDimmed);
-
-                HDC hdcOrig = CreateCompatibleDC(hdcDesktop);
-                HGDIOBJ hObjOld2 = SelectObject(hdcOrig, _pScreenshotCtx->_hbmScreenshot);
-
-                BitBlt(hdcDimmed, 0, 0, _pScreenshotCtx->_sizeDesktop.cx, _pScreenshotCtx->_sizeDesktop.cy, hdcOrig, 0, 0, SRCCOPY);
-
-                SelectObject(hdcOrig, hObjOld2);
-                DeleteDC(hdcOrig);
-
-                ULONG *pulSrc = (ULONG *)pvPixels;
-                constexpr static int c_iDimAmount = 0xFF * 0.75;
-                int cLength = _pScreenshotCtx->_sizeDesktop.cx * _pScreenshotCtx->_sizeDesktop.cy;
-
-                for (int i = cLength - 1; i >= 0; i--)
-                {
-                    ULONG ulR = GetRValue(*pulSrc);
-                    ULONG ulG = GetGValue(*pulSrc);
-                    ULONG ulB = GetBValue(*pulSrc);
-                    ULONG ulDim = (0xFF - c_iDimAmount);
-                    ulR = (ulR * c_iDimAmount + ulDim) >> 8;
-                    ulG = (ulG * c_iDimAmount + ulDim) >> 8;
-                    ulB = (ulB * c_iDimAmount + ulDim) >> 8;
-                    *pulSrc = (*pulSrc & 0xFF000000) | RGB(ulR, ulG, ulB);
-                    pulSrc++;
-                }
-
-                SelectObject(hdcDimmed, hObjOld);
-            }
-
-            DeleteDC(hdcDimmed);
-        }
-
-        ReleaseDC(HWND_DESKTOP, hdcDesktop);
-    }
-
-    return S_OK;
-}
-
 void CScreenshotEditorWindow::_CancelSelection()
 {
     RECT rcSelectionOld = _rcSelection;
     _rcSelection = { 0, 0 };
     _fHasAnySelectionMade = false;
-    InvalidateRect(_hwnd, &rcSelectionOld, FALSE);
+    _pRenderer->UpdateSelection(&_rcSelection);
 }
 
 HRESULT CScreenshotEditorWindow::_OnGetWindowPositions()

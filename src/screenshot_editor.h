@@ -64,6 +64,42 @@ public:
     static CEditorFloatingToolbar *CreateAndShow();
 };
 
+class CScreenshotEditorRendererGDI
+{
+    enum RenderFlag
+    {
+        RENDERF_NONE = 0,
+        RENDERF_SELECTGROW = 1 << 0, // If not set, then the selection is shrinking.
+        RENDERF_SELECTCHANGEEAST = 1 << 1,
+        RENDERF_SELECTCHANGESOUTH = 1 << 2,
+        RENDERF_SELECTCHANGEWEST = 1 << 3,
+        RENDERF_SELECTCHANGENORTH = 1 << 4,
+    };
+
+    CScreenshotContext *_pScreenshotCtx;
+    HWND _hwndRenderTarget;
+    HBITMAP _hbmScreenshotDimmed = nullptr;
+    HBITMAP *_hbmMipmaps = nullptr;
+    RECT _rcSelection = { 0 };
+    int _cMipmaps = 0;
+    int _iFlags = 0;
+    float _iZoom = 1.0;
+    bool _fHasAnySelectionMade = false;
+
+    HRESULT _MakeDimmedScreenshot();
+
+public:
+    CScreenshotEditorRendererGDI(CScreenshotContext *pCtx, HWND hwndRenderTarget)
+        : _pScreenshotCtx(pCtx)
+        , _hwndRenderTarget(hwndRenderTarget)
+    {
+    }
+
+    HRESULT Initialize();
+    HRESULT Paint(HDC hdc, RECT *prcPaint = nullptr);
+    HRESULT UpdateSelection(RECT *prcNew);
+};
+
 //
 // Editor main window. 
 //
@@ -71,16 +107,13 @@ const TCHAR c_szScreenshotEditorWindowClassName[] = TEXT("screenkirk_ScreenshotE
 class CScreenshotEditorWindow : public CWindow<CScreenshotEditorWindow, c_szScreenshotEditorWindowClassName>
 {
     CScreenshotContext *_pScreenshotCtx;
-    HBITMAP _hbmScreenshotDimmed = nullptr;
-    HBITMAP *_hbmMipmaps = nullptr;
+    CScreenshotEditorRendererGDI *_pRenderer = nullptr;
     POINT _ptSelectionOrigin;
     RECT _rcSelection;
     RECT _rcDragBegin;
     ScreenshotEditorTool _tool = SSET_SELECT;
     DragMode _dragMode = DRAGM_DRAG;
     IScreenshotEditorTool *_pExtTool = nullptr; // The current extension tool, if any.
-    int _cMipmaps = 0;
-    float _iZoom = 1.0;
     bool _fEnumeratedWindows = false;
     bool _fIsSelectingRegion = false;
     bool _fHasAnySelectionMade = false;
@@ -98,7 +131,6 @@ protected:
 
     HRESULT _ChangeTool(ScreenshotEditorTool newTool);
     void _UpdateCursor();
-    HRESULT _MakeDimmedScreenshot();
     void _CancelSelection();
 
     /**
