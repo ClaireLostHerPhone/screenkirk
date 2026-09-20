@@ -66,38 +66,46 @@ public:
 
 class CScreenshotEditorRendererGDI
 {
-    enum RenderFlag
-    {
-        RENDERF_NONE = 0,
-        RENDERF_SELECTGROW = 1 << 0, // If not set, then the selection is shrinking.
-        RENDERF_SELECTCHANGEEAST = 1 << 1,
-        RENDERF_SELECTCHANGESOUTH = 1 << 2,
-        RENDERF_SELECTCHANGEWEST = 1 << 3,
-        RENDERF_SELECTCHANGENORTH = 1 << 4,
-    };
-
     CScreenshotContext *_pScreenshotCtx;
     HWND _hwndRenderTarget;
+    HBITMAP _hbmScreenshotLight = nullptr;
     HBITMAP _hbmScreenshotDimmed = nullptr;
     HBITMAP *_hbmMipmaps = nullptr;
     RECT _rcSelection = { 0 };
     int _cMipmaps = 0;
-    int _iFlags = 0;
+    int _iSelMarqueeFrame = 0;
     float _iZoom = 1.0;
-    bool _fHasAnySelectionMade = false;
 
+    struct Bitmap
+    {
+        bool fHasAnySelectionMade : 1;
+        bool fCopiedScreenshot : 1;
+        bool fSelectionBorderAnimDirty : 1;
+        bool fSelectionDirty : 1;
+        bool fSelectionDirtyNorth : 1;
+        bool fSelectionDirtyEast : 1;
+        bool fSelectionDirtySouth : 1;
+        bool fSelectionDirtyWest : 1;
+        bool fEntireFrameDirty : 1;
+    } _bmp = { 0 };
+
+    HRESULT _DrawMarqueeDottedRectangle(HDC hdc, RECT *prc);
     HRESULT _MakeDimmedScreenshot();
 
 public:
     CScreenshotEditorRendererGDI(CScreenshotContext *pCtx, HWND hwndRenderTarget)
         : _pScreenshotCtx(pCtx)
         , _hwndRenderTarget(hwndRenderTarget)
+        , _hbmScreenshotLight(pCtx->_hbmScreenshot)
     {
     }
+
+    ~CScreenshotEditorRendererGDI();
 
     HRESULT Initialize();
     HRESULT Paint(HDC hdc, RECT *prcPaint = nullptr);
     HRESULT UpdateSelection(RECT *prcNew);
+    void UpdateMarquee();
 };
 
 //
@@ -112,8 +120,8 @@ class CScreenshotEditorWindow : public CWindow<CScreenshotEditorWindow, c_szScre
     RECT _rcSelection;
     RECT _rcDragBegin;
     ScreenshotEditorTool _tool = SSET_SELECT;
-    DragMode _dragMode = DRAGM_DRAG;
     IScreenshotEditorTool *_pExtTool = nullptr; // The current extension tool, if any.
+    int _iToolMode = 0;
     bool _fEnumeratedWindows = false;
     bool _fIsSelectingRegion = false;
     bool _fHasAnySelectionMade = false;
@@ -143,9 +151,13 @@ protected:
     HRESULT _OnGetWindowPositions();
 
 public:
+    static constexpr int c_idTimerMarquee = 101;
+
     enum WM
     {
         WM_SCREENSHOTEDITOR_GETWINDOWPOSITIONS = WM_APP + 1,
+        WM_SCREENSHOTEDITOR_BEGINMARQUEETIMER = WM_APP + 2,
+        WM_SCREENSHOTEDITOR_ENDMARQUEETIMER = WM_APP + 3,
     };
 
     static HRESULT RegisterWindowClass();

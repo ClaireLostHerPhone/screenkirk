@@ -35,17 +35,27 @@ CEditorFloatingToolbar *CEditorFloatingToolbar::CreateAndShow()
 // CScreenshotEditorRendererGDI
 //
 
+CScreenshotEditorRendererGDI::~CScreenshotEditorRendererGDI()
+{
+    DeleteObject(_hbmScreenshotDimmed);
+
+    if (_bmp.fCopiedScreenshot)
+    {
+        DeleteObject(_hbmScreenshotLight);
+    }
+}
+
 HRESULT CScreenshotEditorRendererGDI::Initialize()
 {
-    _MakeDimmedScreenshot();
-    return S_OK;
+    HRESULT hr = _MakeDimmedScreenshot();
+    return SUCCEEDED(hr) ? S_OK : hr;
 }
 
 HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
 {
     // Whether or not to use a separate backbuffer. We avoid creating these
     // GDI objects unless required for rendering.
-    bool fSeparateBackbuffer = (_fHasAnySelectionMade);
+    bool fUseBackbuffer = (_bmp.fHasAnySelectionMade);
 
     HDC hdcScreenshot = CreateCompatibleDC(hdc);
     HGDIOBJ hObjOldSS = (HGDIOBJ)SelectObject(hdcScreenshot, _hbmScreenshotDimmed);
@@ -53,7 +63,7 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
     HDC hdcBackbuffer = nullptr;
     HBITMAP hbmBackbuffer = nullptr;
     HGDIOBJ hObjOldBB = nullptr;
-    if (fSeparateBackbuffer)
+    if (fUseBackbuffer)
     {
         hdcBackbuffer = CreateCompatibleDC(hdc);
         hbmBackbuffer = CreateCompatibleBitmap(hdc, RECTWIDTH(*prcPaint), RECTHEIGHT(*prcPaint));
@@ -75,15 +85,15 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
         hdcBackbuffer = hdcScreenshot;
     }
 
-    if (_fHasAnySelectionMade)
+    if (_bmp.fHasAnySelectionMade)
     {
-        HDC hdcSelection = fSeparateBackbuffer
+        HDC hdcSelection = fUseBackbuffer
             ? hdcBackbuffer
             : hdc;
 
         // Highlight the selected area of the screenshot:
         SelectObject(hdcScreenshot, hObjOldSS);
-        hObjOldSS = (HGDIOBJ)SelectObject(hdcScreenshot, _pScreenshotCtx->_hbmScreenshot);
+        hObjOldSS = SelectObject(hdcScreenshot, _hbmScreenshotLight);
         BitBlt(
             hdcSelection,
             _rcSelection.left, _rcSelection.top,
@@ -100,7 +110,7 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
         int iOldBkMode = SetBkMode(hdcSelection, TRANSPARENT);
         int iOldRop = SetROP2(hdcSelection, R2_XORPEN);
 
-        Rectangle(hdcSelection, _rcSelection.left, _rcSelection.top, _rcSelection.right, _rcSelection.bottom);
+        _DrawMarqueeDottedRectangle(hdcSelection, &_rcSelection);
 
         SetROP2(hdcSelection, iOldRop);
         SetBkMode(hdcSelection, iOldBkMode);
@@ -111,34 +121,19 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
         SelectObject(hdcScreenshot, hObjOldSS);
     }
 
-    HGDIOBJ hObjOld = (HGDIOBJ)SelectObject(hdc, _pScreenshotCtx->_hbmScreenshot);
+    HGDIOBJ hObjOld = (HGDIOBJ)SelectObject(hdc, _hbmScreenshotLight);
     POINT ptOriginOld;
-    if (fSeparateBackbuffer)
-    {
-        SetViewportOrgEx(hdcBackbuffer, 0, 0, &ptOriginOld);
-        BitBlt(
-            hdc,
-            prcPaint->left, prcPaint->top,
-            RECTWIDTH(*prcPaint), RECTHEIGHT(*prcPaint),
-            hdcBackbuffer,
-            0, 0,
-            SRCCOPY
-        );
-    }
-    else
-    {
-        BitBlt(
-            hdc,
-            prcPaint->left, prcPaint->top,
-            RECTWIDTH(*prcPaint), RECTHEIGHT(*prcPaint),
-            hdcBackbuffer,
-            prcPaint->left, prcPaint->top,
-            SRCCOPY
-        );
-    }
+    BitBlt(
+        hdc,
+        prcPaint->left, prcPaint->top,
+        RECTWIDTH(*prcPaint), RECTHEIGHT(*prcPaint),
+        hdcBackbuffer,
+        prcPaint->left, prcPaint->top,
+        SRCCOPY
+    );
     SelectObject(hdc, hObjOld);
 
-    if (fSeparateBackbuffer)
+    if (fUseBackbuffer)
     {
         SelectObject(hdcBackbuffer, hObjOldBB);
         DeleteObject(hbmBackbuffer);
@@ -148,7 +143,12 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
     SelectObject(hdcScreenshot, hObjOldSS);
     DeleteDC(hdcScreenshot);
 
-    _iFlags = RENDERF_NONE;
+    // Clear all applicable dirty flags:
+    _bmp.fSelectionDirty = false;
+    _bmp.fSelectionDirtyNorth = false;
+    _bmp.fSelectionDirtySouth = false;
+    _bmp.fSelectionDirtyEast = false;
+    _bmp.fSelectionDirtyWest = false;
 
     return S_OK;
 }
@@ -160,31 +160,76 @@ HRESULT CScreenshotEditorRendererGDI::UpdateSelection(RECT *prcNew)
 
     if (RECTWIDTH(_rcSelection) > RECTWIDTH(rcSelectionOld) && RECTHEIGHT(_rcSelection) > RECTHEIGHT(rcSelectionOld))
     {
-        _iFlags |= RENDERF_SELECTGROW;
+        _bmp.fSelectionDirty = true;
     }
 
     if (_rcSelection.left != rcSelectionOld.left)
     {
-        _iFlags |= RENDERF_SELECTCHANGEWEST;
+        _bmp.fSelectionDirtyWest = true;
     }
     if (_rcSelection.top != rcSelectionOld.top)
     {
-        _iFlags |= RENDERF_SELECTCHANGENORTH;
+        _bmp.fSelectionDirtyNorth = true;
     }
     if (_rcSelection.right != rcSelectionOld.right)
     {
-        _iFlags |= RENDERF_SELECTCHANGEEAST;
+        _bmp.fSelectionDirtyEast = true;
     }
     if (_rcSelection.bottom != rcSelectionOld.bottom)
     {
-        _iFlags |= RENDERF_SELECTCHANGESOUTH;
+        _bmp.fSelectionDirtySouth = true;
     }
     
     RECT rcUnion;
     UnionRect(&rcUnion, &rcSelectionOld, &_rcSelection);
     InvalidateRect(_hwndRenderTarget, &rcUnion, FALSE);
 
-    _fHasAnySelectionMade = RECTWIDTH(_rcSelection) > 0 || RECTHEIGHT(_rcSelection) > 0;
+    bool fOldSelectionState = _bmp.fHasAnySelectionMade;
+    _bmp.fHasAnySelectionMade = RECTWIDTH(_rcSelection) > 0 || RECTHEIGHT(_rcSelection) > 0;
+
+    if (fOldSelectionState != _bmp.fHasAnySelectionMade)
+    {
+        SendMessage(
+            _hwndRenderTarget, 
+            _bmp.fHasAnySelectionMade
+                ? CScreenshotEditorWindow::WM_SCREENSHOTEDITOR_BEGINMARQUEETIMER
+                : CScreenshotEditorWindow::WM_SCREENSHOTEDITOR_ENDMARQUEETIMER,
+            0, 0
+        );
+    }
+
+    return S_OK;
+}
+
+void CScreenshotEditorRendererGDI::UpdateMarquee()
+{
+    _iSelMarqueeFrame++;
+    if (_iSelMarqueeFrame >= 6)
+        _iSelMarqueeFrame = 0;
+    _bmp.fSelectionBorderAnimDirty = true;
+
+    ///RECT rcUpdate = _rcSelection;
+    //InflateRect(&rcUpdate, 2, 2);
+    InvalidateRect(_hwndRenderTarget, &_rcSelection, FALSE);
+}
+
+HRESULT CScreenshotEditorRendererGDI::_DrawMarqueeDottedRectangle(HDC hdc, RECT *prc)
+{
+    // Top border of selection outline:
+    MoveToEx(hdc, prc->left + _iSelMarqueeFrame, prc->top, nullptr);
+    LineTo(hdc, prc->right - 1, prc->top);
+
+    // Right border of selection outline:
+    MoveToEx(hdc, prc->right - 1, prc->top + _iSelMarqueeFrame + 1, nullptr);
+    LineTo(hdc, prc->right - 1, prc->bottom);
+
+    // Bottom border of selection outline:
+    MoveToEx(hdc, prc->right - 1 - _iSelMarqueeFrame, prc->bottom - 1, nullptr);
+    LineTo(hdc, prc->left + 1, prc->bottom - 1);
+
+    // Left border of selection outline:
+    MoveToEx(hdc, prc->left, prc->bottom - 1 - _iSelMarqueeFrame, nullptr);
+    LineTo(hdc, prc->left, prc->top);
 
     return S_OK;
 }
@@ -320,10 +365,32 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
             return _OnMouseRButtonUp(x, y, wParam);
         }
 
+        case WM_TIMER:
+        {
+            if (wParam == c_idTimerMarquee)
+            {
+                _pRenderer->UpdateMarquee();
+            }
+
+            return 0;
+        }
+
         case WM_SCREENSHOTEDITOR_GETWINDOWPOSITIONS:
         {
             // Update the cursor now that enumeration is complete.
             _UpdateCursor();
+            return 0;
+        }
+
+        case WM_SCREENSHOTEDITOR_BEGINMARQUEETIMER:
+        {
+            SetTimer(_hwnd, c_idTimerMarquee, 60, nullptr);
+            return 0;
+        }
+
+        case WM_SCREENSHOTEDITOR_ENDMARQUEETIMER:
+        {
+            KillTimer(_hwnd, c_idTimerMarquee);
             return 0;
         }
     }
@@ -431,7 +498,7 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
         }
         else if (_tool == SSET_DRAG)
         {
-            if (_dragMode == DRAGM_DRAG)
+            if (_iToolMode == DRAGM_DRAG)
             {
                 // This is a bit of a lazy implementation, but I decided to go with it because
                 // I am bad at math.
@@ -447,20 +514,20 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
             }
             else // Sizing modes:
             {
-                if (_dragMode & DRAGM_SIZEW)
+                if (_iToolMode & DRAGM_SIZEW)
                 {
                     _rcSelection.left = x;
                 }
-                else if (_dragMode & DRAGM_SIZEE)
+                else if (_iToolMode & DRAGM_SIZEE)
                 {
                     _rcSelection.right = x;
                 }
 
-                if (_dragMode & DRAGM_SIZEN)
+                if (_iToolMode & DRAGM_SIZEN)
                 {
                     _rcSelection.top = y;
                 }
-                else if (_dragMode & DRAGM_SIZES)
+                else if (_iToolMode & DRAGM_SIZES)
                 {
                     _rcSelection.bottom = y;
                 }
@@ -497,9 +564,9 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
             dm |= DRAGM_SIZEE;
         }
 
-        if (dm != _dragMode)
+        if (dm != _iToolMode)
         {
-            _dragMode = (DragMode)dm;
+            _iToolMode = (DragMode)dm;
             _UpdateCursor();
         }
     }
@@ -641,7 +708,7 @@ void CScreenshotEditorWindow::_UpdateCursor()
                 idc = IDC_CROSS;
                 break;
             case SSET_DRAG:
-                switch (_dragMode)
+                switch (_iToolMode)
                 {
                     case DRAGM_SIZEN:
                     case DRAGM_SIZES:
@@ -718,9 +785,9 @@ CScreenshotEditorWindow *CScreenshotEditorWindow::CreateAndShow(CScreenshotConte
     }
 
     CScreenshotEditorWindow *pWnd = CWindow::Create(
-        0,
+        WS_EX_TOPMOST,
         TEXT("Screenshot Editor - screenkirk"),
-        WS_VISIBLE | WS_POPUP,
+        WS_POPUP,
         pScreenshotCtx->_ptVirtualScreen.x, pScreenshotCtx->_ptVirtualScreen.y,
         pScreenshotCtx->_sizeDesktop.cx, pScreenshotCtx->_sizeDesktop.cy,
         nullptr,
@@ -728,6 +795,8 @@ CScreenshotEditorWindow *CScreenshotEditorWindow::CreateAndShow(CScreenshotConte
         g_hinst,
         pScreenshotCtx
     );
+
+    ShowWindow(pWnd->GetHWND(), SW_SHOW);
 
     return pWnd;
 }
