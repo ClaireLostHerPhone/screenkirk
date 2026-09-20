@@ -2,6 +2,7 @@
 #include "screenshot_editor.h"
 #include "resource.h"
 #include <windowsx.h>
+#include <CommCtrl.h>
 
 //
 // CEditorFloatingToolbar
@@ -9,7 +10,73 @@
 
 LRESULT CEditorFloatingToolbar::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
+    switch (uMsg)
+    {
+        case WM_CREATE:
+        {
+            if (FAILED(_OnCreate()))
+            {
+                MessageBox(nullptr, TEXT("Failed floating toolbar creation routine."), TEXT("Error"), MB_OK | MB_ICONERROR);
+                return -1;
+            }
+            break;
+        }
+
+        case WM_WINDOWPOSCHANGING:
+        {
+            WINDOWPOS *pwp = (WINDOWPOS *)lParam;
+
+            // If the window is activated, then it can be brought in front.
+            // Otherwise, we'll keep it in front of the screenshot editor.
+            pwp->hwndInsertAfter = GetWindow(_hwndEditor, GW_HWNDPREV);
+            pwp->flags &= ~SWP_NOZORDER;
+
+            return 0;
+        }
+    }
+
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
+}
+
+HRESULT CEditorFloatingToolbar::_OnCreate()
+{
+    RECT rcClient;
+    GetClientRect(_hwnd, &rcClient);
+
+    _hwndToolbar = CreateWindowEx(
+        0,
+        TOOLBARCLASSNAME,
+        nullptr,
+        WS_VISIBLE | WS_CHILD,
+        0, 0,
+        RECTWIDTH(rcClient), RECTHEIGHT(rcClient),
+        _hwnd,
+        nullptr,
+        g_hinst,
+        nullptr
+    );
+
+    if (!_hwndToolbar)
+    {
+        return E_FAIL;
+    }
+
+    TBBUTTON rgtbButtons[2] = { 0 };
+
+    rgtbButtons[0].idCommand = 0;
+    rgtbButtons[0].iString = (INT_PTR)TEXT("Select");
+    rgtbButtons[0].fsState = TBSTATE_ENABLED;
+    rgtbButtons[0].fsStyle = BTNS_BUTTON;
+
+    rgtbButtons[1].idCommand = 1;
+    rgtbButtons[1].iString = (INT_PTR)TEXT("Edit");
+    rgtbButtons[1].fsState = TBSTATE_ENABLED;
+    rgtbButtons[1].fsStyle = BTNS_BUTTON;
+
+    SendMessage(_hwndToolbar, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
+    SendMessage(_hwndToolbar, TB_ADDBUTTONS, 2, (LPARAM)&rgtbButtons);
+
+    return S_OK;
 }
 
 // static
@@ -25,10 +92,27 @@ HRESULT CEditorFloatingToolbar::RegisterWindowClass()
 }
 
 // static
-CEditorFloatingToolbar *CEditorFloatingToolbar::CreateAndShow()
+CEditorFloatingToolbar *CEditorFloatingToolbar::Create(HWND hwndEditor)
 {
-    // TODO: Implement!
-    return nullptr;
+    if (FAILED(RegisterWindowClass()))
+    {
+        return nullptr;
+    }
+
+    CEditorFloatingToolbar *pWnd = CWindow::Create(
+        WS_EX_PALETTEWINDOW,
+        TEXT("Screenshot Editor Tools"),
+        WS_OVERLAPPEDWINDOW,
+        0, 0,
+        300, 600,
+        nullptr,
+        nullptr,
+        g_hinst,
+        nullptr
+    );
+    pWnd->_hwndEditor = hwndEditor;
+
+    return pWnd;
 }
 
 //
@@ -111,7 +195,10 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
         int iOldBkMode = SetBkMode(hdcSelection, TRANSPARENT);
         int iOldRop = SetROP2(hdcSelection, R2_XORPEN);
 
-        _DrawMarqueeDottedRectangle(hdcSelection, &_rcSelection);
+        if (S_FALSE == _DrawMarqueeDottedRectangle(hdcSelection, &_rcSelection))
+        {
+            Rectangle(hdcSelection, _rcSelection.left, _rcSelection.top, _rcSelection.right, _rcSelection.bottom);
+        }
 
         SetROP2(hdcSelection, iOldRop);
         SetBkMode(hdcSelection, iOldBkMode);
@@ -211,6 +298,15 @@ void CScreenshotEditorRendererGDI::UpdateMarquee()
 
 HRESULT CScreenshotEditorRendererGDI::_DrawMarqueeDottedRectangle(HDC hdc, RECT *prc)
 {
+    // If the rect is particularly thin, then we'll avoid drawing certain parts
+    // or at all to avoid artifacting/flashing lights. The caller can then choose
+    // to draw a better way for that case.
+    if (RECTWIDTH(*prc) <= 6 || RECTHEIGHT(*prc) <= 6)
+    {
+        // Nothing to draw.
+        return S_FALSE;
+    }
+
     // Top border of selection outline:
     MoveToEx(hdc, prc->left + _iSelMarqueeFrame, prc->top, nullptr);
     LineTo(hdc, prc->right - 1, prc->top);
@@ -308,6 +404,7 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
                 return -1;
             }
             _ChangeTool(SSET_SELECT);
+            SetWindowPos(_hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED);
             break;
         }
 
@@ -328,6 +425,12 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
         case WM_KEYDOWN:
         {
             return _OnKeyDown(wParam, lParam);
+        }
+
+        case WM_SETCURSOR:
+        {
+            _UpdateCursor();
+            return 0;
         }
 
         case WM_MOUSEMOVE:
@@ -586,6 +689,8 @@ LRESULT CScreenshotEditorWindow::_OnMouseLButtonDown(int x, int y, WPARAM flags)
         }
     }
 
+    _HideFloatingToolbar();
+
     return 0;
 }
 
@@ -613,6 +718,8 @@ LRESULT CScreenshotEditorWindow::_OnMouseLButtonUp(int x, int y, WPARAM flags)
             return 0;
         }
     }
+
+    _ShowFloatingToolbar();
 
     return 0;
 }
@@ -667,6 +774,32 @@ HRESULT CScreenshotEditorWindow::_ChangeTool(ScreenshotEditorTool newTool)
 
     _UpdateCursor();
     return S_OK;
+}
+
+void CScreenshotEditorWindow::_ShowFloatingToolbar()
+{
+    POINT ptShow;
+    ptShow.x = (_rcSelection.right + _pScreenshotCtx->_ptVirtualScreen.x) + 10; // Maybe ask the renderer instead?
+    ptShow.y = (_rcSelection.top + _pScreenshotCtx->_ptVirtualScreen.y);
+
+    // If we don't have a toolbar yet, then we will create one:
+    if (!_pFloatingToolbar)
+    {
+        _pFloatingToolbar = CEditorFloatingToolbar::Create(_hwnd);
+    }
+
+    if (_pFloatingToolbar)
+    {
+        SetWindowPos(_pFloatingToolbar->GetHWND(), nullptr, ptShow.x, ptShow.y, 0, 0, SWP_NOSIZE | SWP_SHOWWINDOW);
+    }
+}
+
+void CScreenshotEditorWindow::_HideFloatingToolbar()
+{
+    if (_pFloatingToolbar)
+    {
+        ShowWindow(_pFloatingToolbar->GetHWND(), SW_HIDE);
+    }
 }
 
 void CScreenshotEditorWindow::_UpdateCursor()
@@ -767,6 +900,9 @@ CScreenshotEditorWindow *CScreenshotEditorWindow::CreateAndShow(CScreenshotConte
     }
 
     CScreenshotEditorWindow *pWnd = CWindow::Create(
+        // We apply topmost temporarily during window creation to prevent anything
+        // from being captured under it. Topmost status is cleared pretty quickly
+        // since topmost fullscreen overlay windows are incredibly annoying.
         WS_EX_TOPMOST,
         TEXT("Screenshot Editor - screenkirk"),
         WS_POPUP,

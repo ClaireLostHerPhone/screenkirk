@@ -33,8 +33,13 @@ enum DragMode
 const TCHAR c_szEditorFloatingToolbarClassName[] = TEXT("screenkirk_EditorFloatingToolbar");
 class CEditorFloatingToolbar : public CWindow<CEditorFloatingToolbar, c_szEditorFloatingToolbarClassName>
 {
+    HWND _hwndEditor;
+    HWND _hwndToolbar;
+
 protected:
     LRESULT v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override;
+
+    HRESULT _OnCreate();
 
 public:
     static HRESULT RegisterWindowClass();
@@ -42,7 +47,7 @@ public:
     /**
      * 
      */
-    static CEditorFloatingToolbar *CreateAndShow();
+    static CEditorFloatingToolbar *Create(HWND hwndEditor);
 };
 
 class CScreenshotEditorRendererGDI
@@ -98,6 +103,7 @@ class CScreenshotEditorWindow : public CWindow<CScreenshotEditorWindow, c_szScre
 {
     CScreenshotContext *_pScreenshotCtx;
     CScreenshotEditorRendererGDI *_pRenderer = nullptr;
+    CEditorFloatingToolbar *_pFloatingToolbar = nullptr;
     POINT _ptSelectionOrigin;
     RECT _rcSelection;
     RECT _rcDragBegin;
@@ -119,6 +125,8 @@ protected:
     LRESULT _OnMouseRButtonUp(int x, int y, WPARAM flags);
 
     HRESULT _ChangeTool(ScreenshotEditorTool newTool);
+    void _ShowFloatingToolbar();
+    void _HideFloatingToolbar();
     void _UpdateCursor();
     void _CancelSelection();
 
