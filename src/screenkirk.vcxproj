@@ -65,6 +65,7 @@
   
   <ItemDefinitionGroup>
     <ClCompile>
+	  <AdditionalIncludeDirectories>../include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -112,6 +113,7 @@
     <ClCompile Include="*.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="../include/*.h" />
     <ClInclude Include="*.h" />
   </ItemGroup>
   <ItemGroup>

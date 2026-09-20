@@ -3,6 +3,7 @@
 #define NOMINMAX
 #include <windows.h>
 #include <tchar.h>
+#include "screenkirk.h"
 
 #define RECTWIDTH(rc) ((rc).right - (rc).left)
 #define RECTHEIGHT(rc) ((rc).bottom - (rc).top)

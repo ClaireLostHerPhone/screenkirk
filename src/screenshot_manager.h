@@ -17,17 +17,6 @@ struct WindowPositionList
     WindowPositionRecord rgRecords[16];
 };
 
-DECLARE_INTERFACE(IScreenshotContext)
-{
-    STDMETHOD_(HBITMAP, GetScreenshotBitmap)() PURE;
-    STDMETHOD_(HBITMAP, GetCursorBitmapColorChannel)() PURE;
-    STDMETHOD_(HBITMAP, GetCursorBitmapMaskChannel)() PURE;
-    STDMETHOD_(POINT, GetCursorPosition)() PURE;
-    STDMETHOD_(BOOL, GetCursorVisible)() PURE;
-    STDMETHOD_(POINT, GetVirtualScreenOrigin)() PURE;
-    STDMETHOD_(SIZE, GetVirtualScreenSize)() PURE;
-};
-
 class CScreenshotContext : public IScreenshotContext
 {
     HRESULT _EnsureModificationBuffer();

@@ -37,6 +37,7 @@ CEditorFloatingToolbar *CEditorFloatingToolbar::CreateAndShow()
 
 CScreenshotEditorRendererGDI::~CScreenshotEditorRendererGDI()
 {
+    DeleteObject(_hpenSelect);
     DeleteObject(_hbmScreenshotDimmed);
 
     if (_bmp.fCopiedScreenshot)
@@ -48,6 +49,7 @@ CScreenshotEditorRendererGDI::~CScreenshotEditorRendererGDI()
 HRESULT CScreenshotEditorRendererGDI::Initialize()
 {
     HRESULT hr = _MakeDimmedScreenshot();
+    _hpenSelect = CreatePen(PS_DOT, 1, RGB(128, 128, 128));
     return SUCCEEDED(hr) ? S_OK : hr;
 }
 
@@ -104,8 +106,7 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
         );
 
         // Draw the selection outline:
-        HPEN hDotPen = CreatePen(PS_DOT, 1, RGB(128, 128, 128));
-        hObjOldBB = SelectObject(hdcSelection, hDotPen);
+        hObjOldBB = SelectObject(hdcSelection, _hpenSelect);
         HGDIOBJ hOldBrush = SelectObject(hdcSelection, GetStockObject(HOLLOW_BRUSH));
         int iOldBkMode = SetBkMode(hdcSelection, TRANSPARENT);
         int iOldRop = SetROP2(hdcSelection, R2_XORPEN);
@@ -116,13 +117,11 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
         SetBkMode(hdcSelection, iOldBkMode);
         SelectObject(hdcSelection, hOldBrush);
         SelectObject(hdcSelection, hObjOldBB);
-        DeleteObject(hDotPen);
 
         SelectObject(hdcScreenshot, hObjOldSS);
     }
 
     HGDIOBJ hObjOld = (HGDIOBJ)SelectObject(hdc, _hbmScreenshotLight);
-    POINT ptOriginOld;
     BitBlt(
         hdc,
         prcPaint->left, prcPaint->top,
@@ -207,9 +206,6 @@ void CScreenshotEditorRendererGDI::UpdateMarquee()
     if (_iSelMarqueeFrame >= 6)
         _iSelMarqueeFrame = 0;
     _bmp.fSelectionBorderAnimDirty = true;
-
-    ///RECT rcUpdate = _rcSelection;
-    //InflateRect(&rcUpdate, 2, 2);
     InvalidateRect(_hwndRenderTarget, &_rcSelection, FALSE);
 }
 
@@ -322,7 +318,11 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
 
         case WM_PAINT:
         {
-            return _OnPaint();
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(_hwnd, &ps);
+            _pRenderer->Paint(hdc, &ps.rcPaint);
+            EndPaint(_hwnd, &ps);
+            return 0;
         }
 
         case WM_KEYDOWN:
@@ -402,24 +402,6 @@ LRESULT CScreenshotEditorWindow::_OnDestroy()
 {
     delete _pRenderer;
     delete _pScreenshotCtx;
-    return 0;
-}
-
-LRESULT CScreenshotEditorWindow::_OnPaint()
-{
-    if (!_pScreenshotCtx)
-    {
-        // If we don't have a screenshot context yet, then don't even try
-        // to paint. I don't know this condition to occur, but just in case.
-        return ERROR_NOT_READY;
-    }
-
-    PAINTSTRUCT ps;
-    HDC hdc = BeginPaint(_hwnd, &ps);
-
-    _pRenderer->Paint(hdc, &ps.rcPaint);
-    
-    EndPaint(_hwnd, &ps);
     return 0;
 }
 

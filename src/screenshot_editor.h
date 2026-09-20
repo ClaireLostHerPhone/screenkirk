@@ -27,25 +27,6 @@ enum DragMode
     DRAGM_SIZESE = DRAGM_SIZES | DRAGM_SIZEE, // Bottom-right corner
 };
 
-/**
- * Interface for extension tools.
- */
-DECLARE_INTERFACE(IScreenshotEditorTool)
-{
-    STDMETHOD_(HICON, GetToolIcon)() PURE;
-#ifdef _UNICODE
-    STDMETHOD(GetToolName)(const WCHAR *) PURE;
-#else
-    STDMETHOD(GetToolName)(const CHAR *) PURE;
-#endif
-    STDMETHOD(OnMouseMove)(int x, int y, WPARAM flags) PURE;
-    STDMETHOD(OnMouseLButtonDown)(LONG x, LONG y, WPARAM flags) PURE;
-    STDMETHOD(OnMouseLButtonUp)(LONG x, LONG y, WPARAM flags) PURE;
-    STDMETHOD(OnMouseRButtonDown)(LONG x, LONG y, WPARAM flags) PURE;
-    STDMETHOD(OnMouseRButtonUp)(LONG x, LONG y, WPARAM flags) PURE;
-    STDMETHOD(ApplyCursor)() PURE;
-};
-
 //
 // Editor floating toolbar (used in fullscreen mode)
 //
@@ -68,6 +49,7 @@ class CScreenshotEditorRendererGDI
 {
     CScreenshotContext *_pScreenshotCtx;
     HWND _hwndRenderTarget;
+    HPEN _hpenSelect = nullptr;
     HBITMAP _hbmScreenshotLight = nullptr;
     HBITMAP _hbmScreenshotDimmed = nullptr;
     HBITMAP *_hbmMipmaps = nullptr;
@@ -129,7 +111,6 @@ class CScreenshotEditorWindow : public CWindow<CScreenshotEditorWindow, c_szScre
 protected:
     LRESULT v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override;
     LRESULT _OnDestroy();
-    LRESULT _OnPaint();
     LRESULT _OnKeyDown(WPARAM virtualKey, LPARAM lParam);
     LRESULT _OnMouseMove(int x, int y, WPARAM flags);
     LRESULT _OnMouseLButtonDown(int x, int y, WPARAM flags);
