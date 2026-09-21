@@ -76,10 +76,15 @@ class CScreenshotEditorRendererGDI
         bool fEntireFrameDirty : 1;
     } _bmp = { 0 };
 
+    void _UpdateMarquee();
+    HRESULT _StartSelectionMarqueeTimer();
+    HRESULT _EndSelectionMarqueeTimer();
     HRESULT _DrawMarqueeDottedRectangle(HDC hdc, RECT *prc);
     HRESULT _MakeDimmedScreenshot();
 
 public:
+    static constexpr int c_idTimerMarquee = 101;
+
     CScreenshotEditorRendererGDI(CScreenshotContext *pCtx, HWND hwndRenderTarget)
         : _pScreenshotCtx(pCtx)
         , _hwndRenderTarget(hwndRenderTarget)
@@ -92,7 +97,7 @@ public:
     HRESULT Initialize();
     HRESULT Paint(HDC hdc, RECT *prcPaint = nullptr);
     HRESULT UpdateSelection(RECT *prcNew);
-    void UpdateMarquee();
+    HRESULT HandleWindowMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 };
 
 //
@@ -140,13 +145,10 @@ protected:
     HRESULT _OnGetWindowPositions();
 
 public:
-    static constexpr int c_idTimerMarquee = 101;
-
     enum WM
     {
-        WM_SCREENSHOTEDITOR_GETWINDOWPOSITIONS = WM_APP + 1,
-        WM_SCREENSHOTEDITOR_BEGINMARQUEETIMER = WM_APP + 2,
-        WM_SCREENSHOTEDITOR_ENDMARQUEETIMER = WM_APP + 3,
+        WM_SSE_GETWINDOWPOSITIONS = WM_APP + 1,
+        WM_SSE_CHANGETOOL,
     };
 
     static HRESULT RegisterWindowClass();

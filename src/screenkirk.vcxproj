@@ -70,7 +70,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <PrecompiledHeader>Create</PrecompiledHeader>
+      <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>
     <Link>
@@ -110,7 +110,10 @@
   </ItemDefinitionGroup>
   
   <ItemGroup>
-    <ClCompile Include="*.cpp" />
+	<ClCompile Include="pch.cpp">
+		<PrecompiledHeader>Create</PrecompiledHeader>
+	</ClCompile>
+    <ClCompile Include="*.cpp" Exclude="pch.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="../include/*.h" />

@@ -33,6 +33,33 @@ LRESULT CEditorFloatingToolbar::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
 
             return 0;
         }
+
+        // Key input should pass through to the editor if the floating toolbar is
+        // activated.
+        case WM_KEYDOWN:
+        case WM_KEYUP:
+        {
+            PostMessage(_hwndEditor, uMsg, wParam, lParam);
+            // [[fallthrough]]
+        }
+
+        case WM_COMMAND:
+        {
+            if (LOWORD(wParam) >= 200)
+            {
+                SendMessage(_hwndEditor, CScreenshotEditorWindow::WM_SSE_CHANGETOOL, LOWORD(wParam) - 200, 0);
+            }
+            else switch (LOWORD(wParam))
+            {
+                case 100: // Discard screenshot:
+                {
+                    DestroyWindow(_hwndEditor);
+                    break;
+                }
+            }
+
+            break;
+        }
     }
 
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
@@ -47,7 +74,7 @@ HRESULT CEditorFloatingToolbar::_OnCreate()
         0,
         TOOLBARCLASSNAME,
         nullptr,
-        WS_VISIBLE | WS_CHILD,
+        WS_VISIBLE | WS_CHILD | CCS_NORESIZE,
         0, 0,
         RECTWIDTH(rcClient), RECTHEIGHT(rcClient),
         _hwnd,
@@ -61,20 +88,25 @@ HRESULT CEditorFloatingToolbar::_OnCreate()
         return E_FAIL;
     }
 
-    TBBUTTON rgtbButtons[2] = { 0 };
+    TBBUTTON rgtbButtons[3] = { 0 };
 
-    rgtbButtons[0].idCommand = 0;
+    rgtbButtons[0].idCommand = 200 + SSET_SELECT;
     rgtbButtons[0].iString = (INT_PTR)TEXT("Select");
     rgtbButtons[0].fsState = TBSTATE_ENABLED;
     rgtbButtons[0].fsStyle = BTNS_BUTTON;
 
-    rgtbButtons[1].idCommand = 1;
-    rgtbButtons[1].iString = (INT_PTR)TEXT("Edit");
+    rgtbButtons[1].idCommand = 200 + SSET_DRAG;
+    rgtbButtons[1].iString = (INT_PTR)TEXT("Move");
     rgtbButtons[1].fsState = TBSTATE_ENABLED;
     rgtbButtons[1].fsStyle = BTNS_BUTTON;
 
+    rgtbButtons[2].idCommand = 100;
+    rgtbButtons[2].iString = (INT_PTR)TEXT("Discard");
+    rgtbButtons[2].fsState = TBSTATE_ENABLED;
+    rgtbButtons[2].fsStyle = BTNS_BUTTON;
+
     SendMessage(_hwndToolbar, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
-    SendMessage(_hwndToolbar, TB_ADDBUTTONS, 2, (LPARAM)&rgtbButtons);
+    SendMessage(_hwndToolbar, TB_ADDBUTTONS, 3, (LPARAM)&rgtbButtons);
 
     return S_OK;
 }
@@ -102,7 +134,7 @@ CEditorFloatingToolbar *CEditorFloatingToolbar::Create(HWND hwndEditor)
     CEditorFloatingToolbar *pWnd = CWindow::Create(
         WS_EX_PALETTEWINDOW,
         TEXT("Screenshot Editor Tools"),
-        WS_OVERLAPPEDWINDOW,
+        WS_CAPTION | WS_SYSMENU,
         0, 0,
         300, 600,
         nullptr,
@@ -111,6 +143,18 @@ CEditorFloatingToolbar *CEditorFloatingToolbar::Create(HWND hwndEditor)
         nullptr
     );
     pWnd->_hwndEditor = hwndEditor;
+
+    // I have no idea what to do with the close button of this window for now. I do
+    // not want it to be displayed, but it seems like the only option if I want to
+    // maintain Aero transparency (which I do)
+    // Maybe I'll replace the discard button in the toolbar with this. My only concern
+    // with that design path is that it might be misleading to the user who thinks
+    // that the close button only closes the tool window and not the whole document.
+    HMENU hMenu = GetSystemMenu(pWnd->GetHWND(), FALSE);
+    if (hMenu)
+    {
+        EnableMenuItem(hMenu, SC_CLOSE, MF_BYCOMMAND | MF_DISABLED | MF_GRAYED);
+    }
 
     return pWnd;
 }
@@ -275,25 +319,47 @@ HRESULT CScreenshotEditorRendererGDI::UpdateSelection(RECT *prcNew)
 
     if (fOldSelectionState != _bmp.fHasAnySelectionMade)
     {
-        SendMessage(
-            _hwndRenderTarget, 
-            _bmp.fHasAnySelectionMade
-                ? CScreenshotEditorWindow::WM_SCREENSHOTEDITOR_BEGINMARQUEETIMER
-                : CScreenshotEditorWindow::WM_SCREENSHOTEDITOR_ENDMARQUEETIMER,
-            0, 0
-        );
+        _bmp.fHasAnySelectionMade
+            ? _StartSelectionMarqueeTimer()
+            : _EndSelectionMarqueeTimer();
     }
 
     return S_OK;
 }
 
-void CScreenshotEditorRendererGDI::UpdateMarquee()
+HRESULT CScreenshotEditorRendererGDI::HandleWindowMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+    switch (uMsg)
+    {
+        case WM_TIMER:
+        {
+            _UpdateMarquee();
+            return S_OK;
+        }
+    }
+
+    return S_FALSE;
+}
+
+void CScreenshotEditorRendererGDI::_UpdateMarquee()
 {
     _iSelMarqueeFrame++;
     if (_iSelMarqueeFrame >= 6)
         _iSelMarqueeFrame = 0;
     _bmp.fSelectionBorderAnimDirty = true;
     InvalidateRect(_hwndRenderTarget, &_rcSelection, FALSE);
+}
+
+HRESULT CScreenshotEditorRendererGDI::_StartSelectionMarqueeTimer()
+{
+    SetTimer(_hwndRenderTarget, c_idTimerMarquee, 60, nullptr);
+    return S_OK;
+}
+
+HRESULT CScreenshotEditorRendererGDI::_EndSelectionMarqueeTimer()
+{
+    KillTimer(_hwndRenderTarget, c_idTimerMarquee);
+    return S_OK;
 }
 
 HRESULT CScreenshotEditorRendererGDI::_DrawMarqueeDottedRectangle(HDC hdc, RECT *prc)
@@ -392,6 +458,15 @@ HRESULT CScreenshotEditorRendererGDI::_MakeDimmedScreenshot()
 
 LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
+    if (_pRenderer)
+    {
+        HRESULT hr = _pRenderer->HandleWindowMessage(hwnd, uMsg, wParam, lParam);
+        if (SUCCEEDED(hr) && hr != S_FALSE)
+        {
+            return hr;
+        }
+    }
+
     switch (uMsg)
     {
         case WM_CREATE:
@@ -468,32 +543,22 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
             return _OnMouseRButtonUp(x, y, wParam);
         }
 
-        case WM_TIMER:
-        {
-            if (wParam == c_idTimerMarquee)
-            {
-                _pRenderer->UpdateMarquee();
-            }
-
-            return 0;
-        }
-
-        case WM_SCREENSHOTEDITOR_GETWINDOWPOSITIONS:
+        case WM_SSE_GETWINDOWPOSITIONS:
         {
             // Update the cursor now that enumeration is complete.
             _UpdateCursor();
             return 0;
         }
 
-        case WM_SCREENSHOTEDITOR_BEGINMARQUEETIMER:
+        case WM_SSE_CHANGETOOL:
         {
-            SetTimer(_hwnd, c_idTimerMarquee, 60, nullptr);
-            return 0;
-        }
+            // Clamp the tool to valid options:
+            if (wParam < 0 || wParam > SSET_ILLEGAL)
+            {
+                wParam = SSET_ILLEGAL;
+            }
 
-        case WM_SCREENSHOTEDITOR_ENDMARQUEETIMER:
-        {
-            KillTimer(_hwnd, c_idTimerMarquee);
+            _ChangeTool((ScreenshotEditorTool)wParam);
             return 0;
         }
     }
@@ -503,8 +568,12 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
 
 LRESULT CScreenshotEditorWindow::_OnDestroy()
 {
-    delete _pRenderer;
-    delete _pScreenshotCtx;
+    if (_pRenderer)
+        delete _pRenderer;
+    if (_pScreenshotCtx)
+        delete _pScreenshotCtx;
+    if (_pFloatingToolbar)
+        DestroyWindow(_pFloatingToolbar->GetHWND());
     return 0;
 }
 
@@ -870,12 +939,13 @@ void CScreenshotEditorWindow::_CancelSelection()
     _rcSelection = { 0, 0 };
     _fHasAnySelectionMade = false;
     _pRenderer->UpdateSelection(&_rcSelection);
+    _HideFloatingToolbar();
 }
 
 HRESULT CScreenshotEditorWindow::_OnGetWindowPositions()
 {
     _fEnumeratedWindows = true;
-    PostMessage(_hwnd, WM_SCREENSHOTEDITOR_GETWINDOWPOSITIONS, 0, 0);
+    PostMessage(_hwnd, WM_SSE_GETWINDOWPOSITIONS, 0, 0);
     return S_OK;
 }
 
