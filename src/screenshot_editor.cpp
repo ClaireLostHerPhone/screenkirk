@@ -22,6 +22,12 @@ LRESULT CEditorFloatingToolbar::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
             break;
         }
 
+        case WM_CLOSE:
+        {
+            ShowWindow(hwnd, SW_HIDE);
+            return 0;
+        }
+
         case WM_WINDOWPOSCHANGING:
         {
             WINDOWPOS *pwp = (WINDOWPOS *)lParam;
@@ -143,18 +149,6 @@ CEditorFloatingToolbar *CEditorFloatingToolbar::Create(HWND hwndEditor)
         nullptr
     );
     pWnd->_hwndEditor = hwndEditor;
-
-    // I have no idea what to do with the close button of this window for now. I do
-    // not want it to be displayed, but it seems like the only option if I want to
-    // maintain Aero transparency (which I do)
-    // Maybe I'll replace the discard button in the toolbar with this. My only concern
-    // with that design path is that it might be misleading to the user who thinks
-    // that the close button only closes the tool window and not the whole document.
-    HMENU hMenu = GetSystemMenu(pWnd->GetHWND(), FALSE);
-    if (hMenu)
-    {
-        EnableMenuItem(hMenu, SC_CLOSE, MF_BYCOMMAND | MF_DISABLED | MF_GRAYED);
-    }
 
     return pWnd;
 }
@@ -606,6 +600,12 @@ LRESULT CScreenshotEditorWindow::_OnKeyDown(WPARAM virtualKey, LPARAM lParam)
                 MessageBox(_hwnd, TEXT("Failed to copy image to clipboard!"), TEXT("Error"), MB_OK | MB_ICONERROR);
             }
             
+            break;
+        }
+
+        case 'T':
+        {
+            _ShowFloatingToolbar();
             break;
         }
 
