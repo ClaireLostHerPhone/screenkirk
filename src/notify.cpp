@@ -22,6 +22,15 @@ LRESULT CNotifyWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
             break;
         }
 
+        case WM_DESTROY:
+        {
+            NOTIFYICONDATA nid = { sizeof(nid) };
+            nid.hWnd = _hwnd;
+            nid.uID = 1;
+            Shell_NotifyIcon(NIM_DELETE, &nid);
+            break;
+        }
+
         case WM_NOTIFYICON:
         {
             if (lParam == WM_RBUTTONUP)

@@ -2,6 +2,7 @@
 #include "pch.h"
 #include "window.h"
 #include "screenshot_manager.h"
+#include "dynarray.h"
 
 enum ScreenshotEditorTool
 {
@@ -59,6 +60,19 @@ public:
     static CEditorFloatingToolbar *Create(HWND hwndEditor);
 };
 
+class CRenderObject
+{
+public:
+    IScreenshotEditorObject *_pObj;
+    IScreenshotEditorObjectRenderer *_pRenderer;
+    IScreenshotEditorObjectRendererGDI *_pRendererGdi = nullptr;
+
+    inline bool HasGdiRenderer()
+    {
+        return _pRendererGdi != nullptr;
+    }
+};
+
 class CScreenshotEditorRendererGDI
 {
     CScreenshotContext *_pScreenshotCtx;
@@ -68,6 +82,7 @@ class CScreenshotEditorRendererGDI
     HBITMAP _hbmScreenshotDimmed = nullptr;
     HBITMAP *_hbmMipmaps = nullptr;
     RECT _rcSelection = { 0 };
+    CDynamicArray<CRenderObject> _vRenderObjs;
     int _cMipmaps = 0;
     int _iSelMarqueeFrame = 0;
     float _iZoom = 1.0;
@@ -75,6 +90,8 @@ class CScreenshotEditorRendererGDI
     struct Bitmap
     {
         bool fHasAnySelectionMade : 1;
+        bool fAnyObjectDirty : 1;
+        bool fDrawMarqueeSelection : 1;
         bool fCopiedScreenshot : 1;
         bool fSelectionBorderAnimDirty : 1;
         bool fSelectionDirty : 1;
@@ -89,6 +106,7 @@ class CScreenshotEditorRendererGDI
         bool fSelThickWest : 1;
     } _bmp = { 0 };
 
+    HRESULT _PaintSelectionRectangle(HDC hdc, RECT *prc, bool fUseMarquee);
     void _UpdateMarquee();
     void _ClearDragModeVisualFlags();
     HRESULT _StartSelectionMarqueeTimer();
@@ -112,6 +130,7 @@ public:
     HRESULT Paint(HDC hdc, RECT *prcPaint = nullptr);
     HRESULT UpdateSelection(RECT *prcNew);
     HRESULT UpdateDragMode(DragMode dm);
+    HRESULT SetMarqueeSelection(bool fMarquee);
     HRESULT HandleWindowMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 };
 

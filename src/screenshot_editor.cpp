@@ -3,6 +3,7 @@
 #include "resource.h"
 #include <windowsx.h>
 #include <CommCtrl.h>
+#include <assert.h>
 
 //
 // CEditorFloatingToolbar
@@ -249,52 +250,35 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
             SRCCOPY
         );
 
-        // Draw the selection outline:
-        hObjOldBB = SelectObject(hdcSelection, _hpenSelect);
-        HGDIOBJ hOldBrush = SelectObject(hdcSelection, GetStockObject(HOLLOW_BRUSH));
-        int iOldBkMode = SetBkMode(hdcSelection, TRANSPARENT);
-        int iOldRop = SetROP2(hdcSelection, R2_XORPEN);
-
-        if (S_FALSE == _DrawMarqueeDottedRectangle(hdcSelection, &_rcSelection))
-        {
-            Rectangle(hdcSelection, _rcSelection.left, _rcSelection.top, _rcSelection.right, _rcSelection.bottom);
-        }
-
-        // I don't know how much I like this. I might resort to a more standard solution and
-        // add in rectangle guidelines around the corners and center points.
-        if (_bmp.fSelThickNorth || _bmp.fSelThickEast || _bmp.fSelThickSouth || _bmp.fSelThickWest)
-        {
-            HPEN hpenThick = CreatePen(PS_SOLID, 3, RGB(235, 69, 0));
-            HGDIOBJ hOldPen = SelectObject(hdcSelection, hpenThick);
-
-            if (_bmp.fSelThickNorth)
-            {
-                Rectangle(hdcSelection, _rcSelection.left + 1, _rcSelection.top + 1, _rcSelection.right - 1, _rcSelection.top + 3);
-            }
-            else if (_bmp.fSelThickSouth)
-            {
-                Rectangle(hdcSelection, _rcSelection.left + 1, _rcSelection.bottom - 3, _rcSelection.right - 1, _rcSelection.bottom - 1);
-            }
-
-            if (_bmp.fSelThickWest)
-            {
-                Rectangle(hdcSelection, _rcSelection.left + 1, _rcSelection.top + 1, _rcSelection.left + 3, _rcSelection.bottom - 1);
-            }
-            else if (_bmp.fSelThickEast)
-            {
-                Rectangle(hdcSelection, _rcSelection.right - 3, _rcSelection.top + 1, _rcSelection.right - 1, _rcSelection.bottom - 1);
-            }
-
-            SelectObject(hdcSelection, hOldPen);
-            DeleteObject(hpenThick);
-        }
-
-        SetROP2(hdcSelection, iOldRop);
-        SetBkMode(hdcSelection, iOldBkMode);
-        SelectObject(hdcSelection, hOldBrush);
-        SelectObject(hdcSelection, hObjOldBB);
+        _PaintSelectionRectangle(hdcSelection, &_rcSelection, _bmp.fDrawMarqueeSelection);
 
         SelectObject(hdcScreenshot, hObjOldSS);
+    }
+
+    if (_bmp.fAnyObjectDirty)
+    {
+        HDC hdcSelection = fUseBackbuffer
+            ? hdcBackbuffer
+            : hdc;
+
+        // Paint all objects from back to front.
+        // WARNING!! This is currently unoptimized to all hell. There is no regional consideration
+        // or anything. All objects will be repainted no matter what.
+        for (int i = 0; i < _vRenderObjs.GetSize(); i++)
+        {
+            CRenderObject *pRenderObject = &_vRenderObjs[i];
+
+            if (pRenderObject->HasGdiRenderer())
+            {
+                pRenderObject->_pRendererGdi->SetGdiParameters(hdc, prcPaint);
+                pRenderObject->_pRendererGdi->Paint();
+            }
+            else
+            {
+                // Unimplemented.
+                assert(0);
+            }
+        }
     }
 
     HGDIOBJ hObjOld = (HGDIOBJ)SelectObject(hdc, _hbmScreenshotLight);
@@ -393,10 +377,25 @@ HRESULT CScreenshotEditorRendererGDI::UpdateDragMode(DragMode dm)
     return S_OK;
 }
 
+HRESULT CScreenshotEditorRendererGDI::SetMarqueeSelection(bool fMarquee)
+{
+    _bmp.fDrawMarqueeSelection = fMarquee;
+    return S_OK;
+}
+
 HRESULT CScreenshotEditorRendererGDI::HandleWindowMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     switch (uMsg)
     {
+        case WM_PAINT:
+        {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(_hwndRenderTarget, &ps);
+            Paint(hdc, &ps.rcPaint);
+            EndPaint(_hwndRenderTarget, &ps);
+            return S_OK;
+        }
+
         case WM_TIMER:
         {
             _UpdateMarquee();
@@ -405,6 +404,55 @@ HRESULT CScreenshotEditorRendererGDI::HandleWindowMessage(HWND hwnd, UINT uMsg, 
     }
 
     return S_FALSE;
+}
+
+HRESULT CScreenshotEditorRendererGDI::_PaintSelectionRectangle(HDC hdc, RECT *prc, bool fUseMarquee)
+{
+    HGDIOBJ hObjOldBB = SelectObject(hdc, _hpenSelect);
+    HGDIOBJ hOldBrush = SelectObject(hdc, GetStockObject(HOLLOW_BRUSH));
+    int iOldBkMode = SetBkMode(hdc, TRANSPARENT);
+    int iOldRop = SetROP2(hdc, R2_XORPEN);
+
+    if (!_bmp.fDrawMarqueeSelection || S_FALSE == _DrawMarqueeDottedRectangle(hdc, prc))
+    {
+        Rectangle(hdc, prc->left, prc->top, prc->right, prc->bottom);
+    }
+
+    // I don't know how much I like this. I might resort to a more standard solution and
+    // add in rectangle guidelines around the corners and center points.
+    if (_bmp.fSelThickNorth || _bmp.fSelThickEast || _bmp.fSelThickSouth || _bmp.fSelThickWest)
+    {
+        HPEN hpenThick = CreatePen(PS_SOLID, 3, RGB(235, 69, 0));
+        HGDIOBJ hOldPen = SelectObject(hdc, hpenThick);
+
+        if (_bmp.fSelThickNorth)
+        {
+            Rectangle(hdc, prc->left + 1, prc->top + 1, prc->right - 1, prc->top + 3);
+        }
+        else if (_bmp.fSelThickSouth)
+        {
+            Rectangle(hdc, prc->left + 1, prc->bottom - 3, prc->right - 1, prc->bottom - 1);
+        }
+
+        if (_bmp.fSelThickWest)
+        {
+            Rectangle(hdc, prc->left + 1, prc->top + 1, prc->left + 3, prc->bottom - 1);
+        }
+        else if (_bmp.fSelThickEast)
+        {
+            Rectangle(hdc, prc->right - 3, prc->top + 1, prc->right - 1, prc->bottom - 1);
+        }
+
+        SelectObject(hdc, hOldPen);
+        DeleteObject(hpenThick);
+    }
+
+    SetROP2(hdc, iOldRop);
+    SetBkMode(hdc, iOldBkMode);
+    SelectObject(hdc, hOldBrush);
+    SelectObject(hdc, hObjOldBB);
+
+    return S_OK;
 }
 
 void CScreenshotEditorRendererGDI::_UpdateMarquee()
@@ -562,18 +610,29 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
             return _OnDestroy();
         }
 
-        case WM_PAINT:
-        {
-            PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(_hwnd, &ps);
-            _pRenderer->Paint(hdc, &ps.rcPaint);
-            EndPaint(_hwnd, &ps);
-            return 0;
-        }
-
         case WM_KEYDOWN:
         {
             return _OnKeyDown(wParam, lParam);
+        }
+
+        case WM_KEYUP:
+        {
+            HRESULT hrExtensionTool = S_FALSE;
+            if (_tool == SSET_EXTENSION && _pExtTool)
+            {
+                hrExtensionTool = _pExtTool->OnKeyDown(wParam, lParam);
+
+                if (SUCCEEDED(hrExtensionTool) && hrExtensionTool != S_FALSE)
+                {
+                    return hrExtensionTool;
+                }
+                else if (FAILED(hrExtensionTool))
+                {
+                    // What to do in this case?
+                }
+            }
+
+            break;
         }
 
         case WM_SETCURSOR:
@@ -659,6 +718,21 @@ LRESULT CScreenshotEditorWindow::_OnDestroy()
 
 LRESULT CScreenshotEditorWindow::_OnKeyDown(WPARAM virtualKey, LPARAM lParam)
 {
+    HRESULT hrExtensionTool = S_FALSE;
+    if (_tool == SSET_EXTENSION && _pExtTool)
+    {
+        hrExtensionTool = _pExtTool->OnKeyDown(virtualKey, lParam);
+
+        if (SUCCEEDED(hrExtensionTool) && hrExtensionTool != S_FALSE)
+        {
+            return hrExtensionTool;
+        }
+        else if (FAILED(hrExtensionTool))
+        {
+            // What to do in this case?
+        }
+    }
+
     switch (virtualKey)
     {
         case VK_ESCAPE:
@@ -913,10 +987,21 @@ HRESULT CScreenshotEditorWindow::_ChangeTool(ScreenshotEditorTool newTool)
     if (newTool == SSET_SELECT)
     {
         _tool = SSET_SELECT;
+        _pRenderer->SetMarqueeSelection(true);
     }
     else if (newTool == SSET_DRAG)
     {
         _tool = SSET_DRAG;
+        _pRenderer->SetMarqueeSelection(true);
+    }
+    else if (newTool == SSET_EXTENSION)
+    {
+        // TODO: Extension tools will be able to report this as they need to.
+        _pRenderer->SetMarqueeSelection(false);
+    }
+    else
+    {
+        _pRenderer->SetMarqueeSelection(false);
     }
 
     _UpdateCursor();
@@ -1035,6 +1120,11 @@ HRESULT CScreenshotEditorWindow::_OnGetWindowPositions()
 
 HRESULT CScreenshotEditorWindow::CopyToClipboardAndAccept()
 {
+    if (!_fHasAnySelectionMade)
+    {
+        _rcSelection = { 0, 0, _pScreenshotCtx->_sizeDesktop.cx, _pScreenshotCtx->_sizeDesktop.cy };
+    }
+
     if (SUCCEEDED(_pScreenshotCtx->Crop(&_rcSelection))
         && SUCCEEDED(_pScreenshotCtx->CopyToClipboard()))
     {

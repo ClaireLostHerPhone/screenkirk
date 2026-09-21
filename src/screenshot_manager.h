@@ -22,7 +22,7 @@ class CScreenshotContext : public IScreenshotContext
     HRESULT _EnsureModificationBuffer();
 
 public:
-    HBITMAP _hbmScreenshot;
+    HBITMAP _hbmScreenshot; // The original screenshot.
     HBITMAP _hbmCursorColor; // The color channel of the cursor bitmap.
     HBITMAP _hbmCursorMask;  // The mask channel of the cursor bitmap.
     HBITMAP _hbmModified; // The buffer for all modifications to the original bitmap.

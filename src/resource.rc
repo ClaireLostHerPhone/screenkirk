@@ -4,10 +4,10 @@
 IDI_APP ICON "resource/app.ico"
 
 #define VER_FILEVERSION             1,00,0,0
-#define VER_FILEVERSION_STR         "1.0.0\0"
+#define VER_FILEVERSION_STR         "1.0"
 
 #define VER_PRODUCTVERSION          1,00,0,0
-#define VER_PRODUCTVERSION_STR      "1.0\0"
+#define VER_PRODUCTVERSION_STR      "1.0"
 
 #ifndef DEBUG
 #define VER_DEBUG                   0
@@ -32,7 +32,7 @@ BEGIN
             VALUE "FileDescription",  "screenkirk"
             VALUE "FileVersion",      VER_FILEVERSION_STR
             VALUE "InternalName",     "screenkirk"
-            VALUE "LegalCopyright",   "ClaireLostHerPhone"
+            VALUE "LegalCopyright",   "Copyright © 2026, ClaireLostHerPhone. Licensed under GNU General Public License version 3.0."
             VALUE "LegalTrademarks1", ""
             VALUE "LegalTrademarks2", ""
             VALUE "OriginalFilename", "screenkirk.exe"
