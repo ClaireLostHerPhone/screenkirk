@@ -51,15 +51,27 @@ LRESULT CEditorFloatingToolbar::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
 
         case WM_COMMAND:
         {
-            if (LOWORD(wParam) >= 200)
+            if (LOWORD(wParam) >= IDM_TOOLFIRST)
             {
-                SendMessage(_hwndEditor, CScreenshotEditorWindow::WM_SSE_CHANGETOOL, LOWORD(wParam) - 200, 0);
+                SendMessage(_hwndEditor, CScreenshotEditorWindow::WM_SSE_CHANGETOOL, LOWORD(wParam) - IDM_TOOLFIRST, 0);
             }
             else switch (LOWORD(wParam))
             {
-                case 100: // Discard screenshot:
+                case IDM_DISCARD:
                 {
                     DestroyWindow(_hwndEditor);
+                    break;
+                }
+
+                case IDM_COPY:
+                {
+                    SendMessage(_hwndEditor, CScreenshotEditorWindow::WM_SSE_COPYTOCLIPBOARD, 0, 0);
+                    break;
+                }
+
+                case IDM_SAVE:
+                {
+                    MessageBox(_hwndEditor, TEXT("This operation has yet to be implemented."), TEXT("Unimplemented!"), MB_OK | MB_ICONERROR);
                     break;
                 }
             }
@@ -80,7 +92,7 @@ HRESULT CEditorFloatingToolbar::_OnCreate()
         0,
         TOOLBARCLASSNAME,
         nullptr,
-        WS_VISIBLE | WS_CHILD | CCS_NORESIZE,
+        WS_VISIBLE | WS_CHILD | CCS_NORESIZE | TBSTYLE_WRAPABLE,
         0, 0,
         RECTWIDTH(rcClient), RECTHEIGHT(rcClient),
         _hwnd,
@@ -94,25 +106,35 @@ HRESULT CEditorFloatingToolbar::_OnCreate()
         return E_FAIL;
     }
 
-    TBBUTTON rgtbButtons[3] = { 0 };
+    TBBUTTON rgtbButtons[5] = { 0 };
 
-    rgtbButtons[0].idCommand = 200 + SSET_SELECT;
+    rgtbButtons[0].idCommand = IDM_TOOLFIRST + SSET_SELECT;
     rgtbButtons[0].iString = (INT_PTR)TEXT("Select");
     rgtbButtons[0].fsState = TBSTATE_ENABLED;
     rgtbButtons[0].fsStyle = BTNS_BUTTON;
 
-    rgtbButtons[1].idCommand = 200 + SSET_DRAG;
+    rgtbButtons[1].idCommand = IDM_TOOLFIRST + SSET_DRAG;
     rgtbButtons[1].iString = (INT_PTR)TEXT("Move");
     rgtbButtons[1].fsState = TBSTATE_ENABLED;
     rgtbButtons[1].fsStyle = BTNS_BUTTON;
 
-    rgtbButtons[2].idCommand = 100;
-    rgtbButtons[2].iString = (INT_PTR)TEXT("Discard");
-    rgtbButtons[2].fsState = TBSTATE_ENABLED;
+    rgtbButtons[2].idCommand = IDM_COPY;
+    rgtbButtons[2].iString = (INT_PTR)TEXT("Copy");
+    rgtbButtons[2].fsState = TBSTATE_ENABLED | TBSTATE_WRAP;
     rgtbButtons[2].fsStyle = BTNS_BUTTON;
 
+    rgtbButtons[3].idCommand = IDM_SAVE;
+    rgtbButtons[3].iString = (INT_PTR)TEXT("Save");
+    rgtbButtons[3].fsState = TBSTATE_ENABLED;
+    rgtbButtons[3].fsStyle = BTNS_BUTTON;
+
+    rgtbButtons[4].idCommand = IDM_DISCARD;
+    rgtbButtons[4].iString = (INT_PTR)TEXT("Discard");
+    rgtbButtons[4].fsState = TBSTATE_ENABLED;
+    rgtbButtons[4].fsStyle = BTNS_BUTTON;
+
     SendMessage(_hwndToolbar, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
-    SendMessage(_hwndToolbar, TB_ADDBUTTONS, 3, (LPARAM)&rgtbButtons);
+    SendMessage(_hwndToolbar, TB_ADDBUTTONS, 5, (LPARAM)&rgtbButtons);
 
     return S_OK;
 }
@@ -238,6 +260,35 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
             Rectangle(hdcSelection, _rcSelection.left, _rcSelection.top, _rcSelection.right, _rcSelection.bottom);
         }
 
+        // I don't know how much I like this. I might resort to a more standard solution and
+        // add in rectangle guidelines around the corners and center points.
+        if (_bmp.fSelThickNorth || _bmp.fSelThickEast || _bmp.fSelThickSouth || _bmp.fSelThickWest)
+        {
+            HPEN hpenThick = CreatePen(PS_SOLID, 3, RGB(235, 69, 0));
+            HGDIOBJ hOldPen = SelectObject(hdcSelection, hpenThick);
+
+            if (_bmp.fSelThickNorth)
+            {
+                Rectangle(hdcSelection, _rcSelection.left + 1, _rcSelection.top + 1, _rcSelection.right - 1, _rcSelection.top + 3);
+            }
+            else if (_bmp.fSelThickSouth)
+            {
+                Rectangle(hdcSelection, _rcSelection.left + 1, _rcSelection.bottom - 3, _rcSelection.right - 1, _rcSelection.bottom - 1);
+            }
+
+            if (_bmp.fSelThickWest)
+            {
+                Rectangle(hdcSelection, _rcSelection.left + 1, _rcSelection.top + 1, _rcSelection.left + 3, _rcSelection.bottom - 1);
+            }
+            else if (_bmp.fSelThickEast)
+            {
+                Rectangle(hdcSelection, _rcSelection.right - 3, _rcSelection.top + 1, _rcSelection.right - 1, _rcSelection.bottom - 1);
+            }
+
+            SelectObject(hdcSelection, hOldPen);
+            DeleteObject(hpenThick);
+        }
+
         SetROP2(hdcSelection, iOldRop);
         SetBkMode(hdcSelection, iOldBkMode);
         SelectObject(hdcSelection, hOldBrush);
@@ -321,6 +372,27 @@ HRESULT CScreenshotEditorRendererGDI::UpdateSelection(RECT *prcNew)
     return S_OK;
 }
 
+HRESULT CScreenshotEditorRendererGDI::UpdateDragMode(DragMode dm)
+{
+    _ClearDragModeVisualFlags();
+
+    if (dm != DRAGM_DRAG)
+    {
+        if (dm & DRAGM_SIZEN)
+            _bmp.fSelThickNorth = true;
+        else if (dm & DRAGM_SIZES)
+            _bmp.fSelThickSouth = true;
+
+        if (dm & DRAGM_SIZEW)
+            _bmp.fSelThickWest = true;
+        else if (dm & DRAGM_SIZEE)
+            _bmp.fSelThickEast = true;
+    }
+
+    InvalidateRect(_hwndRenderTarget, &_rcSelection, FALSE);
+    return S_OK;
+}
+
 HRESULT CScreenshotEditorRendererGDI::HandleWindowMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     switch (uMsg)
@@ -342,6 +414,14 @@ void CScreenshotEditorRendererGDI::_UpdateMarquee()
         _iSelMarqueeFrame = 0;
     _bmp.fSelectionBorderAnimDirty = true;
     InvalidateRect(_hwndRenderTarget, &_rcSelection, FALSE);
+}
+
+void CScreenshotEditorRendererGDI::_ClearDragModeVisualFlags()
+{
+    _bmp.fSelThickNorth = false;
+    _bmp.fSelThickSouth = false;
+    _bmp.fSelThickEast = false;
+    _bmp.fSelThickWest = false;
 }
 
 HRESULT CScreenshotEditorRendererGDI::_StartSelectionMarqueeTimer()
@@ -555,6 +635,12 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
             _ChangeTool((ScreenshotEditorTool)wParam);
             return 0;
         }
+
+        case WM_SSE_COPYTOCLIPBOARD:
+        {
+            CopyToClipboardAndAccept();
+            return 0;
+        }
     }
 
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
@@ -590,16 +676,7 @@ LRESULT CScreenshotEditorWindow::_OnKeyDown(WPARAM virtualKey, LPARAM lParam)
 
         case VK_RETURN:
         {
-            if (SUCCEEDED(_pScreenshotCtx->Crop(&_rcSelection))
-                && SUCCEEDED(_pScreenshotCtx->CopyToClipboard()))
-            {
-                DestroyWindow(_hwnd);
-            }
-            else
-            {
-                MessageBox(_hwnd, TEXT("Failed to copy image to clipboard!"), TEXT("Error"), MB_OK | MB_ICONERROR);
-            }
-            
+            CopyToClipboardAndAccept();
             break;
         }
 
@@ -722,6 +799,7 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
         {
             _iToolMode = (DragMode)dm;
             _UpdateCursor();
+            _pRenderer->UpdateDragMode((DragMode)dm);
         }
     }
     else if (_tool == SSET_EXTENSION && _pExtTool)
@@ -842,6 +920,12 @@ HRESULT CScreenshotEditorWindow::_ChangeTool(ScreenshotEditorTool newTool)
     }
 
     _UpdateCursor();
+
+    // We'll update the drag mode since it has implications for rendering.
+    // If the tool isn't the drag tool, then we'll report DRAGM_DRAG since that is
+    // the same as anything else.
+    _pRenderer->UpdateDragMode(_tool == SSET_DRAG ? (DragMode)_iToolMode : DRAGM_DRAG);
+
     return S_OK;
 }
 
@@ -946,6 +1030,22 @@ HRESULT CScreenshotEditorWindow::_OnGetWindowPositions()
 {
     _fEnumeratedWindows = true;
     PostMessage(_hwnd, WM_SSE_GETWINDOWPOSITIONS, 0, 0);
+    return S_OK;
+}
+
+HRESULT CScreenshotEditorWindow::CopyToClipboardAndAccept()
+{
+    if (SUCCEEDED(_pScreenshotCtx->Crop(&_rcSelection))
+        && SUCCEEDED(_pScreenshotCtx->CopyToClipboard()))
+    {
+        DestroyWindow(_hwnd);
+    }
+    else
+    {
+        MessageBox(_hwnd, TEXT("Failed to copy image to clipboard!"), TEXT("Error"), MB_OK | MB_ICONERROR);
+        return E_FAIL;
+    }
+
     return S_OK;
 }
 

@@ -42,6 +42,15 @@ protected:
     HRESULT _OnCreate();
 
 public:
+    enum Command
+    {
+        IDM_DISCARD = 100,
+        IDM_COPY,
+        IDM_SAVE,
+
+        IDM_TOOLFIRST = 200,
+    };
+
     static HRESULT RegisterWindowClass();
 
     /**
@@ -74,9 +83,14 @@ class CScreenshotEditorRendererGDI
         bool fSelectionDirtySouth : 1;
         bool fSelectionDirtyWest : 1;
         bool fEntireFrameDirty : 1;
+        bool fSelThickNorth : 1;
+        bool fSelThickEast : 1;
+        bool fSelThickSouth : 1;
+        bool fSelThickWest : 1;
     } _bmp = { 0 };
 
     void _UpdateMarquee();
+    void _ClearDragModeVisualFlags();
     HRESULT _StartSelectionMarqueeTimer();
     HRESULT _EndSelectionMarqueeTimer();
     HRESULT _DrawMarqueeDottedRectangle(HDC hdc, RECT *prc);
@@ -97,6 +111,7 @@ public:
     HRESULT Initialize();
     HRESULT Paint(HDC hdc, RECT *prcPaint = nullptr);
     HRESULT UpdateSelection(RECT *prcNew);
+    HRESULT UpdateDragMode(DragMode dm);
     HRESULT HandleWindowMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 };
 
@@ -149,7 +164,10 @@ public:
     {
         WM_SSE_GETWINDOWPOSITIONS = WM_APP + 1,
         WM_SSE_CHANGETOOL,
+        WM_SSE_COPYTOCLIPBOARD,
     };
+
+    HRESULT CopyToClipboardAndAccept();
 
     static HRESULT RegisterWindowClass();
 
