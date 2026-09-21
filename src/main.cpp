@@ -1,11 +1,14 @@
 #include "pch.h"
 #include "screenshot_manager.h"
+#include "notify.h"
 
 HINSTANCE g_hinst;
 
 int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PTSTR pCmdLine, int nCmdShow)
 {
     g_hinst = hInstance;
+
+    CNotifyWindow *pNotifyWindow = CNotifyWindow::Create();
 
     // TODO: Support loading a hotkey from user configuration.
     RegisterHotKey(nullptr, ID_HOTKEY_SCREENSHOT, MOD_SHIFT | MOD_WIN, 'S');
