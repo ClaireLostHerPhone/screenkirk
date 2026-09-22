@@ -23,7 +23,7 @@ DECLARE_INTERFACE(IScreenshotContext)
 
 DECLARE_INTERFACE_IID_(IScreenshotEditorObjectRenderer, IUnknown, "{56E23ECC-23B2-4033-BB8D-50FFDA763D10}")
 {
-    STDMETHOD_(ULONG, QueryInterface)(const REFIID riid, OUT void *ppvOut);
+    STDMETHOD(QueryInterface)(REFIID riid, OUT void **ppvOut) PURE;
     STDMETHOD_(ULONG, AddRef)() PURE;
     STDMETHOD_(ULONG, Release)() PURE;
 
@@ -35,7 +35,7 @@ DEFINE_GUID(IID_IScreenshotEditorObjectRenderer,
 
 DECLARE_INTERFACE_IID_(IScreenshotEditorObjectRendererGDI, IScreenshotEditorObjectRenderer, "{56E23ECC-23B2-4033-BB8D-50FFDA763D11}")
 {
-    STDMETHOD_(ULONG, QueryInterface)(const REFIID riid, OUT void *ppvOut);
+    STDMETHOD(QueryInterface)(REFIID riid, OUT void **ppvOut) PURE;
     STDMETHOD_(ULONG, AddRef)() PURE;
     STDMETHOD_(ULONG, Release)() PURE;
 
@@ -51,17 +51,25 @@ DEFINE_GUID(IID_IScreenshotEditorObjectRendererGDI,
 // Editor objects and tools have the screenshot editor as their site.
 //
 
+/**
+ * Represents a screenshot document object.
+ * 
+ * An object is a visual layer with metadata for manipulation with tools.
+ * 
+ * The site of an object is the hosting screenshot editor.
+ */
 DECLARE_INTERFACE_IID_(IScreenshotEditorObject, IObjectWithSite, "{841C133A-9960-44C3-9E95-C1349C731401}")
 {
-    STDMETHOD_(ULONG, QueryInterface)(const REFIID riid, OUT void *ppvOut);
+    STDMETHOD(QueryInterface)(REFIID riid, OUT void **ppvOut) PURE;
     STDMETHOD_(ULONG, AddRef)() PURE;
     STDMETHOD_(ULONG, Release)() PURE;
     STDMETHOD(GetSite)(void *ppvSite) PURE;
     STDMETHOD(SetSite)(void *pUnkSite) PURE;
 
+    STDMETHOD(InsertedIntoDocument)() PURE;
     STDMETHOD(GetManipulationToolMask)() PURE; // TODO: How to go about the parameters here?
-    STDMETHOD(GetLogicalRect)() PURE;
-    STDMETHOD(GetVisualRect)() PURE;
+    STDMETHOD(GetLogicalRect)(IN RECT *prc) PURE;
+    STDMETHOD(GetVisualRect)(IN RECT *prc) PURE;
     STDMETHOD_(BOOL, IsVisualDirty)() PURE;
     STDMETHOD(CreateRenderer)(const REFIID riid, OUT IScreenshotEditorObjectRenderer *pRendererOut) PURE;
 };
@@ -69,17 +77,45 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorObject, IObjectWithSite, "{841C133A-9960
 DEFINE_GUID(IID_IScreenshotEditorObject,
     0x841c133a, 0x9960, 0x44c3, 0x9e, 0x95, 0xc1, 0x34, 0x9c, 0x73, 0x14, 0x1);
 
+DECLARE_INTERFACE_IID_(IScreenshotEditor, IUnknown, "{0A573BD7-2C24-4602-A842-ACC82B12E1F1}")
+{
+    STDMETHOD(QueryInterface)(REFIID riid, OUT void **ppvOut) PURE;
+    STDMETHOD_(ULONG, AddRef)() PURE;
+    STDMETHOD_(ULONG, Release)() PURE;
+
+    /**
+     * Inserts an object into the screenshot document.
+     */
+    STDMETHOD(InsertObject)(IScreenshotEditorObject *pObj) PURE;
+
+    /**
+     * Invalidates an object's visual.
+     */
+    STDMETHOD(InvalidateObject)(IScreenshotEditorObject *pObj) PURE;
+
+    /**
+     * Gets the context of the screenshot document.
+     */
+    STDMETHOD(GetScreenshotContext)(OUT IScreenshotContext **ppContextOut) PURE;
+};
+// {0A573BD7-2C24-4602-A842-ACC82B12E1F1}
+DEFINE_GUID(IID_IScreenshotEditor,
+    0xa573bd7, 0x2c24, 0x4602, 0xa8, 0x42, 0xac, 0xc8, 0x2b, 0x12, 0xe1, 0xf1);
+
 /**
- * Interface for extension tools.
+ * Represents a tool that can be used in the screenshot editor.
+ * 
+ * Extensions can add new tools.
  */
 DECLARE_INTERFACE_IID_(IScreenshotEditorTool, IObjectWithSite, "{1C093E9E-696B-42CA-B4C3-67B793AF2D52}")
 {
-    STDMETHOD_(ULONG, QueryInterface)(const REFIID riid, OUT void *ppvOut);
+    STDMETHOD(QueryInterface)(REFIID riid, OUT void **ppvOut) PURE;
     STDMETHOD_(ULONG, AddRef)() PURE;
     STDMETHOD_(ULONG, Release)() PURE;
     STDMETHOD(GetSite)(void *ppvSite) PURE;
     STDMETHOD(SetSite)(void *pUnkSite) PURE;
 
+    STDMETHOD(SelectTool)() PURE;
     STDMETHOD_(HICON, GetToolIcon)() PURE;
 #ifdef _UNICODE
     STDMETHOD(GetToolName)(const WCHAR *) PURE;

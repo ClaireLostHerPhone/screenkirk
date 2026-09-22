@@ -10,6 +10,10 @@ void OnScreenshotKeyPressed()
     if (SUCCEEDED(hr))
     {
         CScreenshotEditorWindow *pScreenshotWnd = CScreenshotEditorWindow::CreateAndShow(pScreenshotCtx);
+        if (!pScreenshotWnd)
+        {
+            delete pScreenshotCtx;
+        }
     }
 }
 

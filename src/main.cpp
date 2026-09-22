@@ -27,5 +27,8 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PTSTR pCmdL
         }
     }
 
+    // Destroy the notification tray icon:
+    DestroyWindow(pNotifyWindow->GetHWND());
+
     return 0;
 }

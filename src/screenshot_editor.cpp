@@ -200,9 +200,8 @@ HRESULT CScreenshotEditorRendererGDI::Initialize()
 
 HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
 {
-    // Whether or not to use a separate backbuffer. We avoid creating these
-    // GDI objects unless required for rendering.
-    bool fUseBackbuffer = (_bmp.fHasAnySelectionMade);
+    // There is currently no good condition to avoid using the backbuffer under.
+    bool fUseBackbuffer = true;
 
     HDC hdcScreenshot = CreateCompatibleDC(hdc);
     HGDIOBJ hObjOldSS = (HGDIOBJ)SelectObject(hdcScreenshot, _hbmScreenshotDimmed);
@@ -239,8 +238,7 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
             : hdc;
 
         // Highlight the selected area of the screenshot:
-        SelectObject(hdcScreenshot, hObjOldSS);
-        hObjOldSS = SelectObject(hdcScreenshot, _hbmScreenshotLight);
+        SelectObject(hdcScreenshot, _hbmScreenshotLight);
         BitBlt(
             hdcSelection,
             _rcSelection.left, _rcSelection.top,
@@ -268,10 +266,26 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
         {
             CRenderObject *pRenderObject = &_vRenderObjs[i];
 
+            // TODO: Pull this logic out into a new function, something like _UpdateVisualObject,
+            // and improve error checking for GDI objects...
             if (pRenderObject->HasGdiRenderer())
             {
-                pRenderObject->_pRendererGdi->SetGdiParameters(hdc, prcPaint);
+                HDC hdcLayer = CreateCompatibleDC(hdc);
+                if (!pRenderObject->_hbmLayer)
+                {
+                    RECT rcVisual;
+                    pRenderObject->_pObj->GetVisualRect(&rcVisual);
+                    pRenderObject->_hbmLayer = CreateCompatibleBitmap(hdc, RECTWIDTH(rcVisual), RECTHEIGHT(rcVisual));
+                }
+                HGDIOBJ hObjOld = SelectObject(hdcLayer, pRenderObject->_hbmLayer);
+
+                pRenderObject->_pRendererGdi->SetGdiParameters(hdcLayer, prcPaint);
                 pRenderObject->_pRendererGdi->Paint();
+
+                SelectObject(hdcLayer, hObjOld);
+                DeleteDC(hdcLayer);
+
+                // Then AlphaBlt the object's visual layer into the current framebuffer...
             }
             else
             {
@@ -281,7 +295,6 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
         }
     }
 
-    HGDIOBJ hObjOld = (HGDIOBJ)SelectObject(hdc, _hbmScreenshotLight);
     BitBlt(
         hdc,
         prcPaint->left, prcPaint->top,
@@ -290,7 +303,6 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
         prcPaint->left, prcPaint->top,
         SRCCOPY
     );
-    SelectObject(hdc, hObjOld);
 
     if (fUseBackbuffer)
     {
@@ -317,7 +329,8 @@ HRESULT CScreenshotEditorRendererGDI::UpdateSelection(RECT *prcNew)
     RECT rcSelectionOld = _rcSelection;
     _rcSelection = *prcNew;
 
-    if (RECTWIDTH(_rcSelection) > RECTWIDTH(rcSelectionOld) && RECTHEIGHT(_rcSelection) > RECTHEIGHT(rcSelectionOld))
+    if (RECTWIDTH(_rcSelection) != RECTWIDTH(rcSelectionOld)
+        || RECTHEIGHT(_rcSelection) != RECTHEIGHT(rcSelectionOld))
     {
         _bmp.fSelectionDirty = true;
     }
@@ -404,6 +417,68 @@ HRESULT CScreenshotEditorRendererGDI::HandleWindowMessage(HWND hwnd, UINT uMsg, 
     }
 
     return S_FALSE;
+}
+
+HRESULT CScreenshotEditorRendererGDI::CreateRenderObject(IScreenshotEditorObject *pObj)
+{
+    CRenderObject ro = { 0 };
+
+    ro._pObj = pObj;
+    pObj->AddRef();
+    HRESULT hr = pObj->QueryInterface(IID_PPV_ARGS(&ro._pRenderer));
+    if (SUCCEEDED(hr))
+    {
+        IScreenshotEditorObjectRendererGDI *pGdiRenderer = nullptr;
+        if (SUCCEEDED(pObj->QueryInterface(IID_PPV_ARGS(&pGdiRenderer))))
+        {
+            ro._pRendererGdi = pGdiRenderer;
+        }
+
+        _vRenderObjs.Push(ro);
+        return S_OK;
+    }
+
+    _bmp.fAnyObjectDirty = true;
+    return hr;
+}
+
+HRESULT CScreenshotEditorRendererGDI::RemoveRenderObject(IScreenshotEditorObject *pObj)
+{
+    CRenderObject *pro;
+    int idxRenderObj;
+    if (SUCCEEDED(_FindRenderObjectFromInterfaceObject(pObj, &pro, &idxRenderObj)))
+    {
+        RECT rcVisual = { 0 };
+        assert(SUCCEEDED(pObj->GetVisualRect(&rcVisual)));
+
+        if (pro->_pRendererGdi)
+            pro->_pRendererGdi->Release();
+        if (pro->_pRenderer)
+            pro->_pRenderer->Release();
+        if (pro->_pObj)
+            pro->_pObj->Release();
+
+        _bmp.fAnyObjectDirty = true;
+        InvalidateRect(_hwndRenderTarget, &rcVisual, FALSE);
+    }
+
+    return E_NOT_SET;
+}
+
+HRESULT CScreenshotEditorRendererGDI::InvalidateRenderObject(IScreenshotEditorObject *pObj)
+{
+    RECT rcVisual = { 0 };
+    if (SUCCEEDED(pObj->GetVisualRect(&rcVisual)))
+    {
+        _bmp.fAnyObjectDirty = true;
+        InvalidateRect(_hwndRenderTarget, &rcVisual, FALSE);
+        return S_OK;
+    }
+    else
+    {
+        assert(0);
+        return E_FAIL;
+    }
 }
 
 HRESULT CScreenshotEditorRendererGDI::_PaintSelectionRectangle(HDC hdc, RECT *prc, bool fUseMarquee)
@@ -574,6 +649,27 @@ HRESULT CScreenshotEditorRendererGDI::_MakeDimmedScreenshot()
     return S_OK;
 }
 
+HRESULT CScreenshotEditorRendererGDI::_FindRenderObjectFromInterfaceObject(
+    IScreenshotEditorObject *pIfaceObj, OUT CRenderObject **ppRenderObjOut, OUT int *pIdxOut = nullptr
+)
+{
+    if (!pIfaceObj || !ppRenderObjOut)
+        return E_POINTER;
+
+    for (int i = 0; i < _vRenderObjs.GetSize(); i++)
+    {
+        if (_vRenderObjs[i]._pObj == pIfaceObj)
+        {
+            *ppRenderObjOut = &_vRenderObjs[i];
+            if (pIdxOut)
+                *pIdxOut = i;
+            return S_OK;
+        }
+    }
+
+    return E_NOT_SET;
+}
+
 //
 // CScreenshotEditorWindow
 //
@@ -629,6 +725,7 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
                 else if (FAILED(hrExtensionTool))
                 {
                     // What to do in this case?
+                    assert(0);
                 }
             }
 
@@ -707,6 +804,11 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
 
 LRESULT CScreenshotEditorWindow::_OnDestroy()
 {
+    for (IScreenshotEditorObject *&pObj : _vObjs)
+    {
+        _RemoveObject(pObj);
+    }
+
     if (_pRenderer)
         delete _pRenderer;
     if (_pScreenshotCtx)
@@ -996,6 +1098,13 @@ HRESULT CScreenshotEditorWindow::_ChangeTool(ScreenshotEditorTool newTool)
     }
     else if (newTool == SSET_EXTENSION)
     {
+        // Do whatever to get _pExtTool, then call this to allow the extension to reject
+        // switching:
+        /*if (FAILED(_pExtTool->SelectTool()))
+        {
+            return E_ABORT;
+        }*/
+
         // TODO: Extension tools will be able to report this as they need to.
         _pRenderer->SetMarqueeSelection(false);
     }
@@ -1111,10 +1220,106 @@ void CScreenshotEditorWindow::_CancelSelection()
     _HideFloatingToolbar();
 }
 
+HRESULT CScreenshotEditorWindow::_RemoveObject(IScreenshotEditorObject *pObj)
+{
+    // Search an object by its reference and remove it.
+    for (int i = 0; i < _vObjs.GetSize(); i++)
+    {
+        if (_vObjs[i] == pObj)
+        {
+            _pRenderer->RemoveRenderObject(pObj);
+
+            pObj->SetSite(nullptr);
+            pObj->Release();
+            _vObjs.Remove(i);
+            return S_OK;
+        }
+    }
+
+    // The requested object does not exist in the array.
+    assert(0);
+    return E_NOT_SET;
+}
+
 HRESULT CScreenshotEditorWindow::_OnGetWindowPositions()
 {
     _fEnumeratedWindows = true;
     PostMessage(_hwnd, WM_SSE_GETWINDOWPOSITIONS, 0, 0);
+    return S_OK;
+}
+
+STDMETHODIMP CScreenshotEditorWindow::QueryInterface(const REFIID riid, void **ppvOut)
+{
+    if (!&riid || !ppvOut)
+        return E_POINTER;
+
+    if (IsEqualGUID(riid, IID_IScreenshotEditor)
+        || IsEqualGUID(riid, IID_IUnknown))
+    {
+        *ppvOut = static_cast<IScreenshotEditor *>(this);
+        AddRef();
+        return S_OK;
+    }
+    else
+    {
+        return E_NOINTERFACE;
+    }
+}
+
+STDMETHODIMP CScreenshotEditorWindow::InsertObject(IScreenshotEditorObject *pObj)
+{
+    if (!pObj)
+        return E_POINTER;
+
+    for (IScreenshotEditorObject *&pExisting : _vObjs)
+    {
+        if (pObj == pExisting)
+        {
+            return HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
+        }
+    }
+
+    pObj->AddRef();
+    pObj->SetSite(this);
+
+    _vObjs.Push(pObj);
+    HRESULT hr = _pRenderer->CreateRenderObject(pObj);
+
+    if (SUCCEEDED(hr))
+    {
+        hr = pObj->InsertedIntoDocument();
+        if (FAILED(hr) && hr != E_NOTIMPL)
+        {
+            _RemoveObject(pObj);
+        }
+
+        hr = S_OK;
+    }
+    else if (SUCCEEDED(_RemoveObject(pObj)))
+    {
+        return E_FAIL;
+    }
+    else
+    {
+        assert(0);
+        return E_NOT_VALID_STATE;
+    }
+
+    return hr;
+}
+
+STDMETHODIMP CScreenshotEditorWindow::InvalidateObject(IScreenshotEditorObject *pObj)
+{
+    // Apart from invalidating the render object, what should this method do?
+    _pRenderer->InvalidateRenderObject(pObj);
+    return E_NOTIMPL;
+}
+
+STDMETHODIMP CScreenshotEditorWindow::GetScreenshotContext(OUT IScreenshotContext **ppContext)
+{
+    if (!ppContext)
+        return E_POINTER;
+    *ppContext = _pScreenshotCtx;
     return S_OK;
 }
 
@@ -1125,14 +1330,21 @@ HRESULT CScreenshotEditorWindow::CopyToClipboardAndAccept()
         _rcSelection = { 0, 0, _pScreenshotCtx->_sizeDesktop.cx, _pScreenshotCtx->_sizeDesktop.cy };
     }
 
-    if (SUCCEEDED(_pScreenshotCtx->Crop(&_rcSelection))
-        && SUCCEEDED(_pScreenshotCtx->CopyToClipboard()))
+    if (SUCCEEDED(_pScreenshotCtx->Crop(&_rcSelection)))
     {
-        DestroyWindow(_hwnd);
+        if (SUCCEEDED(_pScreenshotCtx->CopyToClipboard()))
+        {
+            DestroyWindow(_hwnd);
+        }
+        else
+        {
+            MessageBox(_hwnd, TEXT("Failed to copy image to clipboard."), TEXT("Error"), MB_OK | MB_ICONERROR);
+            return E_FAIL;
+        }
     }
     else
     {
-        MessageBox(_hwnd, TEXT("Failed to copy image to clipboard!"), TEXT("Error"), MB_OK | MB_ICONERROR);
+        MessageBox(_hwnd, TEXT("Failed to crop image."), TEXT("Error"), MB_OK | MB_ICONERROR);
         return E_FAIL;
     }
 
@@ -1144,7 +1356,7 @@ HRESULT CScreenshotEditorWindow::RegisterWindowClass()
 {
     WNDCLASS cls = {};
     cls.hInstance = g_hinst;
-    cls.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    cls.hbrBackground = nullptr;
     cls.hCursor = nullptr;
     cls.hIcon = LoadIcon(g_hinst, MAKEINTRESOURCE(IDI_APP));
 
@@ -1175,6 +1387,7 @@ CScreenshotEditorWindow *CScreenshotEditorWindow::CreateAndShow(CScreenshotConte
     );
 
     ShowWindow(pWnd->GetHWND(), SW_SHOW);
+    UpdateWindow(pWnd->GetHWND());
 
     return pWnd;
 }

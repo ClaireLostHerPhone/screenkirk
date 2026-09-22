@@ -66,6 +66,7 @@ public:
     IScreenshotEditorObject *_pObj;
     IScreenshotEditorObjectRenderer *_pRenderer;
     IScreenshotEditorObjectRendererGDI *_pRendererGdi = nullptr;
+    HBITMAP _hbmLayer;
 
     inline bool HasGdiRenderer()
     {
@@ -113,6 +114,8 @@ class CScreenshotEditorRendererGDI
     HRESULT _EndSelectionMarqueeTimer();
     HRESULT _DrawMarqueeDottedRectangle(HDC hdc, RECT *prc);
     HRESULT _MakeDimmedScreenshot();
+    HRESULT _FindRenderObjectFromInterfaceObject(
+        IScreenshotEditorObject *pIfaceObj, OUT CRenderObject **ppRenderObjOut, OUT int *pIdxOut = nullptr);
 
 public:
     static constexpr int c_idTimerMarquee = 101;
@@ -132,17 +135,23 @@ public:
     HRESULT UpdateDragMode(DragMode dm);
     HRESULT SetMarqueeSelection(bool fMarquee);
     HRESULT HandleWindowMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+    HRESULT CreateRenderObject(IScreenshotEditorObject *pObj);
+    HRESULT RemoveRenderObject(IScreenshotEditorObject *pObj);
+    HRESULT InvalidateRenderObject(IScreenshotEditorObject *pObj);
 };
 
 //
 // Editor main window. 
 //
 const TCHAR c_szScreenshotEditorWindowClassName[] = TEXT("screenkirk_ScreenshotEditorWindow");
-class CScreenshotEditorWindow : public CWindow<CScreenshotEditorWindow, c_szScreenshotEditorWindowClassName>
+class CScreenshotEditorWindow 
+    : public CWindow<CScreenshotEditorWindow, c_szScreenshotEditorWindowClassName>
+    , public IScreenshotEditor
 {
     CScreenshotContext *_pScreenshotCtx;
     CScreenshotEditorRendererGDI *_pRenderer = nullptr;
     CEditorFloatingToolbar *_pFloatingToolbar = nullptr;
+    CDynamicArray<IScreenshotEditorObject *> _vObjs;
     POINT _ptSelectionOrigin;
     RECT _rcSelection;
     RECT _rcDragBegin;
@@ -168,6 +177,7 @@ protected:
     void _HideFloatingToolbar();
     void _UpdateCursor();
     void _CancelSelection();
+    HRESULT _RemoveObject(IScreenshotEditorObject *pObj);
 
     /**
      * Event callback from the window enumeration thread from the screenshot
@@ -185,6 +195,27 @@ public:
         WM_SSE_CHANGETOOL,
         WM_SSE_COPYTOCLIPBOARD,
     };
+
+    //@Begin IUnknown methods
+    STDMETHODIMP QueryInterface(const REFIID riid, void **ppvOut) override;
+    STDMETHODIMP_(ULONG) AddRef() override
+    {
+        // We don't use COM reference counting since the lifetime of this object
+        // is bound to the window. Unfortunately, we just must risk crashing if
+        // a bad user doesn't respond to our tear-down requests.
+        return 1;
+    }
+    STDMETHODIMP_(ULONG) Release() override
+    {
+        return 1;
+    }
+    //@End IUnknown methods
+
+    //@Begin IScreenshotEditor methods
+    STDMETHODIMP InsertObject(IScreenshotEditorObject *pObj);
+    STDMETHODIMP InvalidateObject(IScreenshotEditorObject *pObj);
+    STDMETHODIMP GetScreenshotContext(OUT IScreenshotContext **ppContext);
+    //@End IScreenshotEditor methods
 
     HRESULT CopyToClipboardAndAccept();
 

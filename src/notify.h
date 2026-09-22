@@ -6,6 +6,7 @@ const TCHAR c_szNotifyWindowClassName[] = TEXT("screenkirk_NotifyWindow");
 class CNotifyWindow : public CWindow<CNotifyWindow, c_szNotifyWindowClassName>
 {
     HMENU _hmenu;
+    bool _fIsMenuOpen = false;
 
 protected:
     LRESULT v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override;

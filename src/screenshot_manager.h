@@ -35,6 +35,8 @@ public:
     ~CScreenshotContext()
     {
         DeleteObject(_hbmScreenshot);
+        DeleteObject(_hbmCursorColor);
+        DeleteObject(_hbmCursorMask);
 
         if (_pWndPosList)
         {

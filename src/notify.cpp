@@ -38,18 +38,23 @@ LRESULT CNotifyWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
                 POINT pt;
                 GetCursorPos(&pt);
 
-                if (!TrackPopupMenu(
-                    _hmenu,
-                    TPM_LEFTALIGN,
-                    pt.x, pt.y,
-                    0,
-                    _hwnd,
-                    nullptr
-                ))
+                if (!_fIsMenuOpen)
                 {
-#ifdef _DEBUG
-                    MessageBox(nullptr, TEXT("Failed TPM"), TEXT("Error"), MB_OK | MB_ICONERROR);
-#endif
+                    SetForegroundWindow(_hwnd);
+                    if (!TrackPopupMenu(
+                        _hmenu,
+                        TPM_LEFTALIGN,
+                        pt.x, pt.y,
+                        0,
+                        _hwnd,
+                        nullptr
+                    ))
+                    {
+                        MessageBox(
+                            nullptr, TEXT("Failed to open the notification item's context menu."),
+                            TEXT("Error"), MB_OK | MB_ICONERROR
+                        );
+                    }
                 }
             }
 
@@ -64,6 +69,18 @@ LRESULT CNotifyWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
             }
 
             return 0;
+        }
+
+        case WM_ENTERMENULOOP:
+        {
+            _fIsMenuOpen = true;
+            break;
+        }
+
+        case WM_EXITMENULOOP:
+        {
+            _fIsMenuOpen = false;
+            break;
         }
     }
 
