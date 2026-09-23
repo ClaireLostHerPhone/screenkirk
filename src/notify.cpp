@@ -11,13 +11,25 @@ LRESULT CNotifyWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
         {
             _hmenu = CreatePopupMenu();
 
+            MENUITEMINFO miiVer = { sizeof(miiVer) };
+            miiVer.fMask = MIIM_ID | MIIM_STRING | MIIM_STATE;
+            miiVer.fState = MFS_DISABLED;
+            miiVer.wID = 100;
+            miiVer.dwTypeData = (TCHAR *)TEXT("codename screenkirk ver. alpha 1.0");
+            miiVer.cch = _tcslen(miiVer.dwTypeData);
+            InsertMenuItem(_hmenu, 0, FALSE, &miiVer);
+
+            MENUITEMINFO miiSep = { sizeof(miiSep) };
+            miiSep.fMask = MIIM_TYPE;
+            miiSep.fType = MFT_SEPARATOR;
+            InsertMenuItem(_hmenu, 1, FALSE, &miiSep);
+
             MENUITEMINFO mii = { sizeof(mii) };
             mii.fMask = MIIM_ID | MIIM_STRING;
             mii.wID = 100;
             mii.dwTypeData = (TCHAR *)TEXT("E&xit");
             mii.cch = _tcslen(mii.dwTypeData);
-
-            InsertMenuItem(_hmenu, 0, FALSE, &mii);
+            InsertMenuItem(_hmenu, 2, FALSE, &mii);
 
             break;
         }
