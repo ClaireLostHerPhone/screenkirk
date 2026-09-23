@@ -68,8 +68,8 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorObject, IObjectWithSite, "{841C133A-9960
 
     STDMETHOD(InsertedIntoDocument)() PURE;
     STDMETHOD(GetManipulationToolMask)() PURE; // TODO: How to go about the parameters here?
-    STDMETHOD(GetLogicalRect)(IN RECT *prc) PURE;
-    STDMETHOD(GetVisualRect)(IN RECT *prc) PURE;
+    STDMETHOD(GetLogicalRect)(IN RECT *prc) PURE; // An object's logical rect is relative to the document.
+    STDMETHOD(GetVisualRect)(IN RECT *prc) PURE; // An object's visual rect is relative to its logical rect.
     STDMETHOD_(BOOL, IsVisualDirty)() PURE;
     STDMETHOD(CreateRenderer)(const REFIID riid, OUT IScreenshotEditorObjectRenderer *pRendererOut) PURE;
 };
@@ -112,15 +112,15 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorTool, IObjectWithSite, "{1C093E9E-696B-4
     STDMETHOD(QueryInterface)(REFIID riid, OUT void **ppvOut) PURE;
     STDMETHOD_(ULONG, AddRef)() PURE;
     STDMETHOD_(ULONG, Release)() PURE;
-    STDMETHOD(GetSite)(void *ppvSite) PURE;
+    STDMETHOD(GetSite)(void **ppvSite) PURE;
     STDMETHOD(SetSite)(void *pUnkSite) PURE;
 
     STDMETHOD(SelectTool)() PURE;
     STDMETHOD_(HICON, GetToolIcon)() PURE;
 #ifdef _UNICODE
-    STDMETHOD(GetToolName)(const WCHAR *) PURE;
+    STDMETHOD(GetToolName)(OUT const WCHAR **pszOut) PURE;
 #else
-    STDMETHOD(GetToolName)(const CHAR *) PURE;
+    STDMETHOD(GetToolName)(OUT const CHAR **pszOut) PURE;
 #endif
     STDMETHOD(OnKeyDown)(int iVirtualKey, LPARAM lParam) PURE;
     STDMETHOD(OnKeyUp)(int iVirtualKey, LPARAM lParam) PURE;
@@ -134,3 +134,29 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorTool, IObjectWithSite, "{1C093E9E-696B-4
 // {1C093E9E-696B-42CA-B4C3-67B793AF2D52}
 DEFINE_GUID(IID_IScreenshotEditorTool,
     0x1c093e9e, 0x696b, 0x42ca, 0xb4, 0xc3, 0x67, 0xb7, 0x93, 0xaf, 0x2d, 0x52);
+
+DECLARE_INTERFACE_IID_(IScreenshotEditorExtension, IUnknown, "{42D1141D-1455-47EA-A610-089D87173C8E}")
+{
+    STDMETHOD(QueryInterface)(REFIID riid, OUT void **ppvOut) PURE;
+    STDMETHOD_(ULONG, AddRef)() PURE;
+    STDMETHOD_(ULONG, Release)() PURE;
+
+#ifdef _UNICODE
+    STDMETHOD(GetName)(OUT const WCHAR **pszOut) PURE;
+    STDMETHOD(GetVersionString)(OUT const WCHAR **pszOut) PURE;
+    STDMETHOD(GetAuthor)(OUT const WCHAR **pszOut) PURE;
+#else
+    STDMETHOD(GetName)(OUT const CHAR **pszOut) PURE;
+    STDMETHOD(GetVersionString)(OUT const CHAR **pszOut) PURE;
+    STDMETHOD(GetAuthor)(OUT const CHAR **pszOut) PURE;
+#endif
+
+    STDMETHOD(GetToolSet)(const CLSID **prgiidTools, int *piNumTools) PURE;
+};
+// {42D1141D-1455-47EA-A610-089D87173C8E}
+DEFINE_GUID(IID_IScreenshotEditorExtension,
+    0x42d1141d, 0x1455, 0x47ea, 0xa6, 0x10, 0x8, 0x9d, 0x87, 0x17, 0x3c, 0x8e);
+
+// {2FE63844-CA9B-4D9A-84F9-1ACF4AD39C7E}
+DEFINE_GUID(CLSID_ScreenshotEditorExtension,
+    0x2fe63844, 0xca9b, 0x4d9a, 0x84, 0xf9, 0x1a, 0xcf, 0x4a, 0xd3, 0x9c, 0x7e);

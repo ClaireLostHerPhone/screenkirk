@@ -1,0 +1,47 @@
+#include <windows.h>
+#include "resource.h"
+
+IDI_APP ICON "resource/app.ico"
+
+#define VER_FILEVERSION             1,00,0,0
+#define VER_FILEVERSION_STR         "1.0"
+
+#define VER_PRODUCTVERSION          1,00,0,0
+#define VER_PRODUCTVERSION_STR      "1.0"
+
+#ifndef DEBUG
+#define VER_DEBUG                   0
+#else
+#define VER_DEBUG                   VS_FF_DEBUG
+#endif
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     VER_FILEVERSION
+PRODUCTVERSION  VER_PRODUCTVERSION
+FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+FILEFLAGS       (VER_DEBUG)
+FILEOS          VOS__WINDOWS32
+FILETYPE        VFT_DLL
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904E4"
+        BEGIN
+            VALUE "CompanyName",      "ClaireLostHerPhone"
+            VALUE "FileDescription",  "Text Tool for screenkirk"
+            VALUE "FileVersion",      VER_FILEVERSION_STR
+            VALUE "InternalName",     "text_tool"
+            VALUE "LegalCopyright",   "Copyright © 2026, ClaireLostHerPhone. Licensed under GNU General Public License version 3.0."
+            VALUE "LegalTrademarks1", ""
+            VALUE "LegalTrademarks2", ""
+            VALUE "OriginalFilename", "text_tool.dll"
+            VALUE "ProductName",      "Text Tool"
+            VALUE "ProductVersion",   VER_PRODUCTVERSION_STR
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

@@ -266,32 +266,15 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
         {
             CRenderObject *pRenderObject = &_vRenderObjs[i];
 
-            // TODO: Pull this logic out into a new function, something like _UpdateVisualObject,
-            // and improve error checking for GDI objects...
-            if (pRenderObject->HasGdiRenderer())
+            // If the object is dirty, then we will repaint its buffer. Otherwise, the object's
+            // paint routine is skipped, and the existing image in the buffer is copied back
+            // over the editor framebuffer.
+            if (pRenderObject->_pObj->IsVisualDirty())
             {
-                HDC hdcLayer = CreateCompatibleDC(hdc);
-                if (!pRenderObject->_hbmLayer)
-                {
-                    RECT rcVisual;
-                    pRenderObject->_pObj->GetVisualRect(&rcVisual);
-                    pRenderObject->_hbmLayer = CreateCompatibleBitmap(hdc, RECTWIDTH(rcVisual), RECTHEIGHT(rcVisual));
-                }
-                HGDIOBJ hObjOld = SelectObject(hdcLayer, pRenderObject->_hbmLayer);
-
-                pRenderObject->_pRendererGdi->SetGdiParameters(hdcLayer, prcPaint);
-                pRenderObject->_pRendererGdi->Paint();
-
-                SelectObject(hdcLayer, hObjOld);
-                DeleteDC(hdcLayer);
-
-                // Then AlphaBlt the object's visual layer into the current framebuffer...
+                assert(SUCCEEDED(_PaintRenderObjectVisualBuffer(hdc, prcPaint, pRenderObject)));
             }
-            else
-            {
-                // Unimplemented.
-                assert(0);
-            }
+
+            // Then AlphaBlt the object's visual layer into the current framebuffer...
         }
     }
 
@@ -530,6 +513,47 @@ HRESULT CScreenshotEditorRendererGDI::_PaintSelectionRectangle(HDC hdc, RECT *pr
     return S_OK;
 }
 
+HRESULT CScreenshotEditorRendererGDI::_PaintRenderObjectVisualBuffer(HDC hdcRenderTarget, RECT *prcPaint, CRenderObject *pRenderObject)
+{
+    // TODO: Pull this logic out into a new function, something like _UpdateVisualObject,
+    // and improve error checking for GDI objects...
+    if (pRenderObject->HasGdiRenderer())
+    {
+        HDC hdcLayer = CreateCompatibleDC(hdcRenderTarget);
+        if (hdcLayer)
+        {
+            RECT rcVisual;
+            if (SUCCEEDED(pRenderObject->_pObj->GetVisualRect(&rcVisual)))
+            {
+                if (!pRenderObject->_hbmLayer)
+                {
+                    pRenderObject->_hbmLayer = CreateCompatibleBitmap(hdcRenderTarget, RECTWIDTH(rcVisual), RECTHEIGHT(rcVisual));
+                }
+
+                if (pRenderObject->_hbmLayer)
+                {
+                    HGDIOBJ hObjOld = SelectObject(hdcLayer, pRenderObject->_hbmLayer);
+
+                    SetViewportOrgEx(hdcLayer, rcVisual.left, rcVisual.top, nullptr);
+
+                    assert(SUCCEEDED(pRenderObject->_pRendererGdi->SetGdiParameters(hdcLayer, prcPaint)));
+                    assert(SUCCEEDED(pRenderObject->_pRendererGdi->Paint()));
+
+                    SelectObject(hdcLayer, hObjOld);
+                }
+            }
+            DeleteDC(hdcLayer);
+        }
+    }
+    else
+    {
+        // Unimplemented.
+        assert(0);
+    }
+
+    return E_NOTIMPL;
+}
+
 void CScreenshotEditorRendererGDI::_UpdateMarquee()
 {
     _iSelMarqueeFrame++;
@@ -650,7 +674,7 @@ HRESULT CScreenshotEditorRendererGDI::_MakeDimmedScreenshot()
 }
 
 HRESULT CScreenshotEditorRendererGDI::_FindRenderObjectFromInterfaceObject(
-    IScreenshotEditorObject *pIfaceObj, OUT CRenderObject **ppRenderObjOut, OUT int *pIdxOut = nullptr
+    IScreenshotEditorObject *pIfaceObj, OUT CRenderObject **ppRenderObjOut, OUT int *pIdxOut
 )
 {
     if (!pIfaceObj || !ppRenderObjOut)

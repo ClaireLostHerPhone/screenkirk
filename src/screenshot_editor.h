@@ -108,6 +108,7 @@ class CScreenshotEditorRendererGDI
     } _bmp = { 0 };
 
     HRESULT _PaintSelectionRectangle(HDC hdc, RECT *prc, bool fUseMarquee);
+    HRESULT _PaintRenderObjectVisualBuffer(HDC hdcRenderTarget, RECT *prcPaint, CRenderObject *pRenderObject);
     void _UpdateMarquee();
     void _ClearDragModeVisualFlags();
     HRESULT _StartSelectionMarqueeTimer();
