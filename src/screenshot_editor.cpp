@@ -266,18 +266,31 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
             : hdc;
 
         // Paint all objects from back to front.
-        // WARNING!! This is currently unoptimized to all hell. There is no regional consideration
-        // or anything. All objects will be repainted no matter what.
         for (int i = 0; i < _vRenderObjs.GetSize(); i++)
         {
             CRenderObject *pRenderObject = &_vRenderObjs[i];
 
-            // If the object is dirty, then we will repaint its buffer. Otherwise, the object's
-            // paint routine is skipped, and the existing image in the buffer is copied back
-            // over the editor framebuffer.
-            if (pRenderObject->_pObj->IsVisualDirty())
+            RECT rcLogical;
+            RECT rcVisual;
+            if (SUCCEEDED(pRenderObject->_pObj->GetLogicalRect(&rcLogical))
+                && SUCCEEDED(pRenderObject->_pObj->GetVisualRect(&rcVisual)))
             {
-                assert(SUCCEEDED(_PaintRenderObjectVisualBuffer(hdc, prcPaint, pRenderObject)));
+                OffsetRect(&rcVisual, rcLogical.left, rcLogical.top);
+
+                RECT rcTemp;
+                if (!IntersectRect(&rcTemp, &rcVisual, prcPaint))
+                {
+                    // Skip over objects that can't be reasonably drawn anyway.
+                    continue;
+                }
+
+                // If the object is dirty, then we will repaint its buffer. Otherwise, the object's
+                // paint routine is skipped, and the existing image in the buffer is copied back
+                // over the editor framebuffer.
+                if (pRenderObject->_pObj->IsVisualDirty())
+                {
+                    assert(SUCCEEDED(_PaintRenderObjectVisualBuffer(hdc, prcPaint, pRenderObject)));
+                }
             }
 
             // Then AlphaBlt the object's visual layer into the current framebuffer...
@@ -569,16 +582,18 @@ HRESULT CScreenshotEditorRendererGDI::_PaintSizingHelpers(HDC hdc, RECT *prc)
 
 HRESULT CScreenshotEditorRendererGDI::_PaintRenderObjectVisualBuffer(HDC hdcRenderTarget, RECT *prcPaint, CRenderObject *pRenderObject)
 {
-    // TODO: Pull this logic out into a new function, something like _UpdateVisualObject,
-    // and improve error checking for GDI objects...
     if (pRenderObject->HasGdiRenderer())
     {
         HDC hdcLayer = CreateCompatibleDC(hdcRenderTarget);
         if (hdcLayer)
         {
+            RECT rcLogical;
             RECT rcVisual;
-            if (SUCCEEDED(pRenderObject->_pObj->GetVisualRect(&rcVisual)))
+            if (SUCCEEDED(pRenderObject->_pObj->GetLogicalRect(&rcLogical))
+                && SUCCEEDED(pRenderObject->_pObj->GetVisualRect(&rcVisual)))
             {
+                OffsetRect(&rcVisual, rcLogical.left, rcLogical.top);
+
                 if (!pRenderObject->_hbmLayer)
                 {
                     pRenderObject->_hbmLayer = CreateCompatibleBitmap(hdcRenderTarget, RECTWIDTH(rcVisual), RECTHEIGHT(rcVisual));
