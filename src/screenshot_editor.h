@@ -197,7 +197,7 @@ public:
         WM_SSE_COPYTOCLIPBOARD,
     };
 
-    //@Begin IUnknown methods
+    //@Begin IUnknown
     STDMETHODIMP QueryInterface(const REFIID riid, void **ppvOut) override;
     STDMETHODIMP_(ULONG) AddRef() override
     {
@@ -210,13 +210,13 @@ public:
     {
         return 1;
     }
-    //@End IUnknown methods
+    //@End IUnknown
 
-    //@Begin IScreenshotEditor methods
+    //@Begin IScreenshotEditor
     STDMETHODIMP InsertObject(IScreenshotEditorObject *pObj);
     STDMETHODIMP InvalidateObject(IScreenshotEditorObject *pObj);
     STDMETHODIMP GetScreenshotContext(OUT IScreenshotContext **ppContext);
-    //@End IScreenshotEditor methods
+    //@End IScreenshotEditor
 
     HRESULT CopyToClipboardAndAccept();
 

@@ -8,7 +8,8 @@ struct WindowPositionRecord
     DWORD dwStyle;
     DWORD dwExStyle;
     TCHAR szWindowClass[MAX_PATH];
-    RECT rc;
+    RECT rcNonclient;
+    RECT rcClient;
 };
 
 struct WindowPositionList
@@ -66,44 +67,42 @@ public:
     HRESULT Crop(RECT *prcCrop);
     HRESULT CopyToClipboard();
 
-    //
-    // Interface method implementations:
-    //
-
-    STDMETHODIMP_(HBITMAP) GetScreenshotBitmap()
+    //@Begin IScreenshotContext
+    STDMETHODIMP_(HBITMAP) GetScreenshotBitmap() override
     {
         return _hbmScreenshot;
     }
 
-    STDMETHODIMP_(HBITMAP) GetCursorBitmapColorChannel()
+    STDMETHODIMP_(HBITMAP) GetCursorBitmapColorChannel() override
     {
         return _hbmCursorColor;
     }
 
-    STDMETHODIMP_(HBITMAP) GetCursorBitmapMaskChannel()
+    STDMETHODIMP_(HBITMAP) GetCursorBitmapMaskChannel() override
     {
         return _hbmCursorColor;
     }
 
-    STDMETHODIMP_(POINT) GetCursorPosition()
+    STDMETHODIMP_(POINT) GetCursorPosition() override
     {
         return _ptCursor;
     }
 
-    STDMETHODIMP_(BOOL) GetCursorVisible()
+    STDMETHODIMP_(BOOL) GetCursorVisible() override
     {
         return _fCursorVisible;
     }
 
-    STDMETHODIMP_(POINT) GetVirtualScreenOrigin()
+    STDMETHODIMP_(POINT) GetVirtualScreenOrigin() override
     {
         return _ptVirtualScreen;
     }
 
-    STDMETHODIMP_(SIZE) GetVirtualScreenSize()
+    STDMETHODIMP_(SIZE) GetVirtualScreenSize() override
     {
         return _sizeDesktop;
     }
+    //@End IScreenshotContext
 };
 
 void OnScreenshotKeyPressed();

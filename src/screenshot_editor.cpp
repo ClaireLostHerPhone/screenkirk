@@ -162,7 +162,7 @@ CEditorFloatingToolbar *CEditorFloatingToolbar::Create(HWND hwndEditor)
 
     CEditorFloatingToolbar *pWnd = CWindow::Create(
         WS_EX_PALETTEWINDOW,
-        TEXT("Screenshot Editor Tools"),
+        TEXT("Tools"),
         WS_CAPTION | WS_SYSMENU,
         0, 0,
         300, 600,
