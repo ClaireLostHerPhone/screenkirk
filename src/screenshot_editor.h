@@ -79,10 +79,12 @@ class CScreenshotEditorRendererGDI
     CScreenshotContext *_pScreenshotCtx;
     HWND _hwndRenderTarget;
     HPEN _hpenSelect = nullptr;
+    HPEN _hpenSizingHelpers = nullptr;
     HBITMAP _hbmScreenshotLight = nullptr;
     HBITMAP _hbmScreenshotDimmed = nullptr;
     HBITMAP *_hbmMipmaps = nullptr;
     RECT _rcSelection = { 0 };
+    RECT _rcSelectionVisual = { 0 };
     CDynamicArray<CRenderObject> _vRenderObjs;
     int _cMipmaps = 0;
     int _iSelMarqueeFrame = 0;
@@ -92,6 +94,7 @@ class CScreenshotEditorRendererGDI
     {
         bool fHasAnySelectionMade : 1;
         bool fAnyObjectDirty : 1;
+        bool fDrawSelectionSizeHelpers : 1;
         bool fDrawMarqueeSelection : 1;
         bool fCopiedScreenshot : 1;
         bool fSelectionBorderAnimDirty : 1;
@@ -101,16 +104,12 @@ class CScreenshotEditorRendererGDI
         bool fSelectionDirtySouth : 1;
         bool fSelectionDirtyWest : 1;
         bool fEntireFrameDirty : 1;
-        bool fSelThickNorth : 1;
-        bool fSelThickEast : 1;
-        bool fSelThickSouth : 1;
-        bool fSelThickWest : 1;
     } _bmp = { 0 };
 
     HRESULT _PaintSelectionRectangle(HDC hdc, RECT *prc, bool fUseMarquee);
+    HRESULT _PaintSizingHelpers(HDC hdc, RECT *prc);
     HRESULT _PaintRenderObjectVisualBuffer(HDC hdcRenderTarget, RECT *prcPaint, CRenderObject *pRenderObject);
     void _UpdateMarquee();
-    void _ClearDragModeVisualFlags();
     HRESULT _StartSelectionMarqueeTimer();
     HRESULT _EndSelectionMarqueeTimer();
     HRESULT _DrawMarqueeDottedRectangle(HDC hdc, RECT *prc);
@@ -119,6 +118,7 @@ class CScreenshotEditorRendererGDI
         IScreenshotEditorObject *pIfaceObj, OUT CRenderObject **ppRenderObjOut, OUT int *pIdxOut = nullptr);
 
 public:
+    static constexpr int c_iRadiusSelHelper = 8;
     static constexpr int c_idTimerMarquee = 101;
 
     CScreenshotEditorRendererGDI(CScreenshotContext *pCtx, HWND hwndRenderTarget)
@@ -133,7 +133,7 @@ public:
     HRESULT Initialize();
     HRESULT Paint(HDC hdc, RECT *prcPaint = nullptr);
     HRESULT UpdateSelection(RECT *prcNew);
-    HRESULT UpdateDragMode(DragMode dm);
+    HRESULT UpdateSizingHelpersVisibility(bool fVisible);
     HRESULT SetMarqueeSelection(bool fMarquee);
     HRESULT HandleWindowMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
     HRESULT CreateRenderObject(IScreenshotEditorObject *pObj);

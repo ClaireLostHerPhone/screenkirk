@@ -183,6 +183,7 @@ CEditorFloatingToolbar *CEditorFloatingToolbar::Create(HWND hwndEditor)
 CScreenshotEditorRendererGDI::~CScreenshotEditorRendererGDI()
 {
     DeleteObject(_hpenSelect);
+    DeleteObject(_hpenSizingHelpers);
     DeleteObject(_hbmScreenshotDimmed);
 
     if (_bmp.fCopiedScreenshot)
@@ -195,6 +196,7 @@ HRESULT CScreenshotEditorRendererGDI::Initialize()
 {
     HRESULT hr = _MakeDimmedScreenshot();
     _hpenSelect = CreatePen(PS_DOT, 1, RGB(128, 128, 128));
+    _hpenSizingHelpers = CreatePen(PS_SOLID, 1, RGB(128, 128, 128));
     return SUCCEEDED(hr) ? S_OK : hr;
 }
 
@@ -249,6 +251,10 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
         );
 
         _PaintSelectionRectangle(hdcSelection, &_rcSelection, _bmp.fDrawMarqueeSelection);
+        if (_bmp.fDrawSelectionSizeHelpers)
+        {
+            _PaintSizingHelpers(hdcSelection, &_rcSelection);
+        }
 
         SelectObject(hdcScreenshot, hObjOldSS);
     }
@@ -309,8 +315,14 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
 
 HRESULT CScreenshotEditorRendererGDI::UpdateSelection(RECT *prcNew)
 {
-    RECT rcSelectionOld = _rcSelection;
+    RECT rcSelectionOld = _rcSelectionVisual;
     _rcSelection = *prcNew;
+
+    _rcSelectionVisual = *prcNew;
+    if (_bmp.fDrawSelectionSizeHelpers)
+    {
+        InflateRect(&_rcSelectionVisual, c_iRadiusSelHelper / 2, c_iRadiusSelHelper / 2);
+    }
 
     if (RECTWIDTH(_rcSelection) != RECTWIDTH(rcSelectionOld)
         || RECTHEIGHT(_rcSelection) != RECTHEIGHT(rcSelectionOld))
@@ -336,7 +348,8 @@ HRESULT CScreenshotEditorRendererGDI::UpdateSelection(RECT *prcNew)
     }
     
     RECT rcUnion;
-    UnionRect(&rcUnion, &rcSelectionOld, &_rcSelection);
+    UnionRect(&rcUnion, &rcSelectionOld, &_rcSelectionVisual);
+    //InflateRect(&rcUnion, 2, 2);
     InvalidateRect(_hwndRenderTarget, &rcUnion, FALSE);
 
     bool fOldSelectionState = _bmp.fHasAnySelectionMade;
@@ -352,24 +365,22 @@ HRESULT CScreenshotEditorRendererGDI::UpdateSelection(RECT *prcNew)
     return S_OK;
 }
 
-HRESULT CScreenshotEditorRendererGDI::UpdateDragMode(DragMode dm)
+HRESULT CScreenshotEditorRendererGDI::UpdateSizingHelpersVisibility(bool fVisible)
 {
-    _ClearDragModeVisualFlags();
-
-    if (dm != DRAGM_DRAG)
+    if (fVisible != _bmp.fDrawSelectionSizeHelpers)
     {
-        if (dm & DRAGM_SIZEN)
-            _bmp.fSelThickNorth = true;
-        else if (dm & DRAGM_SIZES)
-            _bmp.fSelThickSouth = true;
+        _bmp.fDrawSelectionSizeHelpers = fVisible;
 
-        if (dm & DRAGM_SIZEW)
-            _bmp.fSelThickWest = true;
-        else if (dm & DRAGM_SIZEE)
-            _bmp.fSelThickEast = true;
+        RECT rcRefresh = _rcSelection;
+        InflateRect(&rcRefresh, c_iRadiusSelHelper / 2, c_iRadiusSelHelper / 2);
+
+        if (fVisible)
+        {
+            _rcSelectionVisual = rcRefresh;
+        }
+
+        InvalidateRect(_hwndRenderTarget, &rcRefresh, FALSE);
     }
-
-    InvalidateRect(_hwndRenderTarget, &_rcSelection, FALSE);
     return S_OK;
 }
 
@@ -476,34 +487,77 @@ HRESULT CScreenshotEditorRendererGDI::_PaintSelectionRectangle(HDC hdc, RECT *pr
         Rectangle(hdc, prc->left, prc->top, prc->right, prc->bottom);
     }
 
-    // I don't know how much I like this. I might resort to a more standard solution and
-    // add in rectangle guidelines around the corners and center points.
-    if (_bmp.fSelThickNorth || _bmp.fSelThickEast || _bmp.fSelThickSouth || _bmp.fSelThickWest)
-    {
-        HPEN hpenThick = CreatePen(PS_SOLID, 3, RGB(235, 69, 0));
-        HGDIOBJ hOldPen = SelectObject(hdc, hpenThick);
+    SetROP2(hdc, iOldRop);
+    SetBkMode(hdc, iOldBkMode);
+    SelectObject(hdc, hOldBrush);
+    SelectObject(hdc, hObjOldBB);
 
-        if (_bmp.fSelThickNorth)
-        {
-            Rectangle(hdc, prc->left + 1, prc->top + 1, prc->right - 1, prc->top + 3);
-        }
-        else if (_bmp.fSelThickSouth)
-        {
-            Rectangle(hdc, prc->left + 1, prc->bottom - 3, prc->right - 1, prc->bottom - 1);
-        }
+    return S_OK;
+}
 
-        if (_bmp.fSelThickWest)
-        {
-            Rectangle(hdc, prc->left + 1, prc->top + 1, prc->left + 3, prc->bottom - 1);
-        }
-        else if (_bmp.fSelThickEast)
-        {
-            Rectangle(hdc, prc->right - 3, prc->top + 1, prc->right - 1, prc->bottom - 1);
-        }
+HRESULT CScreenshotEditorRendererGDI::_PaintSizingHelpers(HDC hdc, RECT *prc)
+{
+    HGDIOBJ hObjOldBB = SelectObject(hdc, _hpenSizingHelpers);
+    HGDIOBJ hOldBrush = SelectObject(hdc, GetStockObject(HOLLOW_BRUSH));
+    int iOldBkMode = SetBkMode(hdc, TRANSPARENT);
+    int iOldRop = SetROP2(hdc, R2_XORPEN);
 
-        SelectObject(hdc, hOldPen);
-        DeleteObject(hpenThick);
-    }
+    static constexpr int c_iHelper = c_iRadiusSelHelper;
+    static constexpr int c_iRadiusHalfHelper = (c_iRadiusSelHelper / 2);
+
+    // Top-left
+    Rectangle(
+        hdc,
+        prc->left - c_iRadiusHalfHelper,
+        prc->top - c_iRadiusHalfHelper,
+        prc->left + c_iRadiusHalfHelper,
+        prc->top + c_iRadiusHalfHelper
+    );
+
+    // Top-center
+    Rectangle(
+        hdc,
+        ((prc->right + prc->left) / 2) - c_iRadiusHalfHelper,
+        prc->top - c_iRadiusHalfHelper,
+        ((prc->right + prc->left) / 2) + c_iRadiusHalfHelper,
+        prc->top + c_iRadiusHalfHelper
+    );
+
+    // Top-right
+    Rectangle(
+        hdc,
+        prc->right - c_iRadiusHalfHelper,
+        prc->top - c_iRadiusHalfHelper,
+        prc->right + c_iRadiusHalfHelper,
+        prc->top + c_iRadiusHalfHelper
+    );
+
+    // Bottom-left
+    Rectangle(
+        hdc,
+        prc->left - c_iRadiusHalfHelper,
+        prc->bottom - c_iRadiusHalfHelper,
+        prc->left + c_iRadiusHalfHelper,
+        prc->bottom + c_iRadiusHalfHelper
+    );
+
+    // Bottom-center
+    Rectangle(
+        hdc,
+        ((prc->right + prc->left) / 2) - c_iRadiusHalfHelper,
+        prc->bottom - c_iRadiusHalfHelper,
+        ((prc->right + prc->left) / 2) + c_iRadiusHalfHelper,
+        prc->bottom + c_iRadiusHalfHelper
+    );
+
+    // Bottom-right
+    Rectangle(
+        hdc,
+        prc->right - c_iRadiusHalfHelper,
+        prc->bottom - c_iRadiusHalfHelper,
+        prc->right + c_iRadiusHalfHelper,
+        prc->bottom + c_iRadiusHalfHelper
+    );
 
     SetROP2(hdc, iOldRop);
     SetBkMode(hdc, iOldBkMode);
@@ -560,15 +614,7 @@ void CScreenshotEditorRendererGDI::_UpdateMarquee()
     if (_iSelMarqueeFrame >= 6)
         _iSelMarqueeFrame = 0;
     _bmp.fSelectionBorderAnimDirty = true;
-    InvalidateRect(_hwndRenderTarget, &_rcSelection, FALSE);
-}
-
-void CScreenshotEditorRendererGDI::_ClearDragModeVisualFlags()
-{
-    _bmp.fSelThickNorth = false;
-    _bmp.fSelThickSouth = false;
-    _bmp.fSelThickEast = false;
-    _bmp.fSelThickWest = false;
+    InvalidateRect(_hwndRenderTarget, &_rcSelectionVisual, FALSE);
 }
 
 HRESULT CScreenshotEditorRendererGDI::_StartSelectionMarqueeTimer()
@@ -945,6 +991,8 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
             }
             else // Sizing modes:
             {
+                RECT rcOld = _rcSelection;
+
                 if (_iToolMode & DRAGM_SIZEW)
                 {
                     _rcSelection.left = x;
@@ -961,6 +1009,26 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
                 else if (_iToolMode & DRAGM_SIZES)
                 {
                     _rcSelection.bottom = y;
+                }
+
+                // If the resulting rectangle is "negative", then correct it
+                // to make all coordinates positive, and flip the tool mode
+                // accordingly.
+                if (_rcSelection.right < rcOld.left)
+                {
+                    _rcSelection.left = _rcSelection.right;
+                    _rcSelection.right = rcOld.left;
+
+                    // Invert the current tool mode:
+                    _iToolMode ^= (DRAGM_SIZEE | DRAGM_SIZEW);
+                }
+                if (_rcSelection.bottom < rcOld.top)
+                {
+                    _rcSelection.top = _rcSelection.bottom;
+                    _rcSelection.bottom = rcOld.top;
+
+                    // Invert the current tool mode:
+                    _iToolMode ^= (DRAGM_SIZES | DRAGM_SIZEN);
                 }
 
                 _pRenderer->UpdateSelection(&_rcSelection);
@@ -999,7 +1067,6 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
         {
             _iToolMode = (DragMode)dm;
             _UpdateCursor();
-            _pRenderer->UpdateDragMode((DragMode)dm);
         }
     }
     else if (_tool == SSET_EXTENSION && _pExtTool)
@@ -1139,10 +1206,7 @@ HRESULT CScreenshotEditorWindow::_ChangeTool(ScreenshotEditorTool newTool)
 
     _UpdateCursor();
 
-    // We'll update the drag mode since it has implications for rendering.
-    // If the tool isn't the drag tool, then we'll report DRAGM_DRAG since that is
-    // the same as anything else.
-    _pRenderer->UpdateDragMode(_tool == SSET_DRAG ? (DragMode)_iToolMode : DRAGM_DRAG);
+    _pRenderer->UpdateSizingHelpersVisibility(_tool == SSET_DRAG);
 
     return S_OK;
 }
