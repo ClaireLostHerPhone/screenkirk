@@ -20,6 +20,8 @@ public:
     STDMETHODIMP_(ULONG) Release() override
     {
         InterlockedDecrement(&_uRefCount);
+        if (_uRefCount <= 0)
+            delete this;
         return _uRefCount;
     }
     //@End IUnknown
@@ -83,6 +85,8 @@ public:
     STDMETHODIMP_(ULONG) Release() override
     {
         InterlockedDecrement(&_uRefCount);
+        if (_uRefCount <= 0)
+            delete this;
         return _uRefCount;
     }
     //@End IUnknown
@@ -177,6 +181,8 @@ public:
     STDMETHODIMP_(ULONG) Release() override
     {
         InterlockedDecrement(&_uRefCount);
+        if (_uRefCount <= 0)
+            delete this;
         return _uRefCount;
     }
     //@End IUnknown
@@ -231,6 +237,11 @@ __declspec(dllexport) extern "C" HRESULT DllGetClassObject(CLSID &rclsid, IID &r
     }
 
     return CLASS_E_CLASSNOTAVAILABLE;
+}
+
+_declspec(dllexport) extern "C" HRESULT DllCanUnloadNow(void)
+{
+    return S_OK;
 }
 
 BOOL WINAPI DllMain(HINSTANCE hInstance, DWORD fdwReason, void *lpvReserved)
