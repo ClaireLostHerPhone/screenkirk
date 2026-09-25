@@ -1,166 +1,5 @@
 #include "pch.h"
-#include <new>
-
-//
-// CTextEditorTool
-//
-class CTextEditorTool : public IScreenshotEditorTool
-{
-    ULONG _uRefCount;
-    void *_pvSite;
-
-public:
-    //@Begin IUnknown
-    STDMETHODIMP QueryInterface(const IID &riid, void **ppvOut) override;
-    STDMETHODIMP_(ULONG) AddRef() override
-    {
-        InterlockedIncrement(&_uRefCount);
-        return _uRefCount;
-    }
-    STDMETHODIMP_(ULONG) Release() override
-    {
-        InterlockedDecrement(&_uRefCount);
-        if (_uRefCount <= 0)
-            delete this;
-        return _uRefCount;
-    }
-    //@End IUnknown
-
-    //@Begin IObjectWithSite
-    STDMETHODIMP GetSite(void **ppvSite) override;
-    STDMETHODIMP SetSite(void *pUnkSite) override;
-    //@End IObjectWithSite
-
-    STDMETHODIMP SelectTool() override;
-    STDMETHODIMP_(HICON) GetToolIcon() override;
-    STDMETHODIMP GetToolName(OUT const TCHAR **pszOut) override;
-    STDMETHODIMP OnKeyDown(int iVirtualKey, LPARAM lParam) override;
-    STDMETHODIMP OnKeyUp(int iVirtualKey, LPARAM lParam) override;
-    STDMETHODIMP OnMouseMove(int x, int y, WPARAM flags) override;
-    STDMETHODIMP OnMouseLButtonDown(LONG x, LONG y, WPARAM flags) override;
-    STDMETHODIMP OnMouseLButtonUp(LONG x, LONG y, WPARAM flags) override;
-    STDMETHODIMP OnMouseRButtonDown(LONG x, LONG y, WPARAM flags) override;
-    STDMETHODIMP OnMouseRButtonUp(LONG x, LONG y, WPARAM flags) override;
-    STDMETHODIMP ApplyCursor() override;
-};
-// {97378D4C-1FA7-4F10-9626-426A879BB01A}
-DEFINE_GUID(CLSID_TextEditorTool,
-    0x97378d4c, 0x1fa7, 0x4f10, 0x96, 0x26, 0x42, 0x6a, 0x87, 0x9b, 0xb0, 0x1a);
-
-
-STDMETHODIMP CTextEditorTool::GetSite(void **ppvSite)
-{
-    if (!ppvSite)
-        return E_POINTER;
-
-    *ppvSite = _pvSite;
-    return S_OK;
-}
-
-STDMETHODIMP CTextEditorTool::SetSite(void *pUnkSite)
-{
-    if (!pUnkSite)
-        return E_POINTER;
-
-    _pvSite = pUnkSite;
-    return S_OK;
-}
-
-//
-// CTextEditorExtension
-//
-
-class CTextEditorExtension : public IScreenshotEditorExtension
-{
-    ULONG _uRefCount;
-
-public:
-    //@Begin IUnknown
-    STDMETHODIMP QueryInterface(const IID &riid, void **ppvOut) override;
-    STDMETHODIMP_(ULONG) AddRef() override
-    {
-        InterlockedIncrement(&_uRefCount);
-        return _uRefCount;
-    }
-    STDMETHODIMP_(ULONG) Release() override
-    {
-        InterlockedDecrement(&_uRefCount);
-        if (_uRefCount <= 0)
-            delete this;
-        return _uRefCount;
-    }
-    //@End IUnknown
-
-    //@Begin IScreenshotEditorExtension
-    STDMETHODIMP QueryInterface(REFIID riid, OUT void **ppvOut) override;
-    STDMETHODIMP_(ULONG) AddRef() override;
-    STDMETHODIMP_(ULONG) Release() override;
-
-    STDMETHODIMP GetName(OUT const TCHAR **pszOut) override;
-    STDMETHODIMP GetVersionString(OUT const TCHAR **pszOut) override;
-    STDMETHODIMP GetAuthor(OUT const TCHAR **pszOut) override;
-
-    STDMETHODIMP GetToolSet(const CLSID **prgiidTools, int *piNumTools) override;
-    //@End IScreenshotEditorExtension
-};
-
-STDMETHODIMP CTextEditorExtension::QueryInterface(const IID &riid, void **ppvOut)
-{
-    if (IsEqualGUID(riid, IID_IUnknown)
-        || IsEqualGUID(riid, IID_IScreenshotEditorExtension))
-    {
-        *ppvOut = static_cast<IScreenshotEditorExtension *>(this);
-        return S_OK;
-    }
-
-    return E_NOINTERFACE;
-}
-
-inline HRESULT GiveStaticString(const TCHAR *pszStatic, size_t cbStr, OUT const TCHAR **pszOut)
-{
-    if (!pszOut)
-        return E_POINTER;
-
-    *pszOut = (const TCHAR *)CoTaskMemAlloc(cbStr);
-    if (!pszOut)
-        return E_OUTOFMEMORY;
-
-    _tcscpy((TCHAR *)pszOut, pszStatic);
-    return S_OK;
-}
-
-STDMETHODIMP CTextEditorExtension::GetName(OUT const TCHAR **pszOut)
-{
-    static const TCHAR szString[] = TEXT("Text Tool");
-    return GiveStaticString(szString, sizeof(szString), pszOut);
-}
-
-STDMETHODIMP CTextEditorExtension::GetVersionString(OUT const TCHAR **pszOut)
-{
-    static const TCHAR szString[] = TEXT("1.0");
-    return GiveStaticString(szString, sizeof(szString), pszOut);
-}
-
-STDMETHODIMP CTextEditorExtension::GetAuthor(OUT const TCHAR **pszOut)
-{
-    static const TCHAR szString[] = TEXT("ClaireLostHerPhone");
-    return GiveStaticString(szString, sizeof(szString), pszOut);
-}
-
-STDMETHODIMP CTextEditorExtension::GetToolSet(const CLSID **prgiidTools, int *piNumTools)
-{
-    if (!prgiidTools || !piNumTools)
-        return E_POINTER;
-
-    static const const CLSID rgiidTool[] = {
-        CLSID_TextEditorTool,
-        { 0 },
-    };
-
-    *prgiidTools = &rgiidTool[0];
-    *piNumTools = 1;
-    return S_OK;
-}
+#include "extension.h"
 
 //
 // CExtensionClassFactory
@@ -171,21 +10,7 @@ class CExtensionClassFactory : public IClassFactory
     ULONG _uRefCount;
 
 public:
-    //@Begin IUnknown
-    STDMETHODIMP QueryInterface(const IID &riid, void **ppvOut) override;
-    STDMETHODIMP_(ULONG) AddRef() override
-    {
-        InterlockedIncrement(&_uRefCount);
-        return _uRefCount;
-    }
-    STDMETHODIMP_(ULONG) Release() override
-    {
-        InterlockedDecrement(&_uRefCount);
-        if (_uRefCount <= 0)
-            delete this;
-        return _uRefCount;
-    }
-    //@End IUnknown
+    IMPLEMENT_IUNKNOWN;
 
     //@Begin IClassFactory
     STDMETHODIMP CreateInstance(IUnknown *pUnkOuter, const IID &riid, void **ppvOut) override;
@@ -207,9 +32,28 @@ STDMETHODIMP CExtensionClassFactory::QueryInterface(const IID &riid, void **ppvO
 
 STDMETHODIMP CExtensionClassFactory::CreateInstance(IUnknown *pUnkOuter, const IID &riid, void **ppvOut)
 {
+    if (&riid == nullptr || !ppvOut)
+        return E_POINTER;
 
+    CTextEditorExtension *pExt = new (std::nothrow) CTextEditorExtension();
+    if (pExt)
+    {
+        HRESULT hr = pExt->QueryInterface(riid, ppvOut);
 
-    return E_NOTIMPL;
+        if (SUCCEEDED(hr))
+        {
+            return S_OK;
+        }
+        else
+        {
+            delete pExt;
+            return hr;
+        }
+    }
+    else
+    {
+        return E_OUTOFMEMORY;
+    }
 }
 
 STDMETHODIMP CExtensionClassFactory::LockServer(BOOL fLock)
@@ -239,7 +83,7 @@ __declspec(dllexport) extern "C" HRESULT DllGetClassObject(CLSID &rclsid, IID &r
     return CLASS_E_CLASSNOTAVAILABLE;
 }
 
-_declspec(dllexport) extern "C" HRESULT DllCanUnloadNow(void)
+__declspec(dllexport) extern "C" HRESULT DllCanUnloadNow(void)
 {
     return S_OK;
 }

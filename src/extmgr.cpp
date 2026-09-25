@@ -8,6 +8,8 @@ class CLoadedExtension
 public:
     HMODULE _hmod;
     IScreenshotEditorExtension *_pExt;
+    TCHAR _szDllPath[MAX_PATH];
+    const TCHAR *_pszDllName;
     const TCHAR *_pszName;
     const TCHAR *_pszVersionStr;
     const TCHAR *_pszAuthor;
@@ -36,15 +38,28 @@ public:
     HRESULT LoadExtension(const TCHAR *pszPath);
 };
 
+CExtensionManager g_extMgrInst;
+
 HRESULT CExtensionManager::LoadExtension(const TCHAR *pszPath)
 {
     CLoadedExtension le;
 
     HMODULE hmod = LoadLibrary(pszPath);
-    HRESULT hr = E_FAIL;
+    HRESULT hr = HRESULT_FROM_WIN32(GetLastError());
     if (hmod)
     {
         le._hmod = hmod;
+        GetModuleFileName(hmod, le._szDllPath, ARRAYSIZE(le._szDllPath));
+
+        // I forget the standard API to do this, and I'm writing this without an internet connection, so
+        // oh well...
+        for (const TCHAR *c = le._szDllPath; *c; c++)
+        {
+            if (*c == TEXT('\\'))
+            {
+                le._pszDllName = c + 1;
+            }
+        }
 
         DllGetClassObject_t pfnDllGetClassObject = (DllGetClassObject_t)GetProcAddress(hmod, "DllGetClassObject");
         if (!pfnDllGetClassObject)

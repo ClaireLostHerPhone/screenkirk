@@ -112,8 +112,8 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorTool, IObjectWithSite, "{1C093E9E-696B-4
     STDMETHOD(QueryInterface)(REFIID riid, OUT void **ppvOut) PURE;
     STDMETHOD_(ULONG, AddRef)() PURE;
     STDMETHOD_(ULONG, Release)() PURE;
-    STDMETHOD(GetSite)(void **ppvSite) PURE;
-    STDMETHOD(SetSite)(void *pUnkSite) PURE;
+    STDMETHOD(GetSite)(REFIID riid, void **ppvSite) PURE;
+    STDMETHOD(SetSite)(IUnknown *pUnkSite) PURE;
 
     STDMETHOD(SelectTool)() PURE;
     STDMETHOD_(HICON, GetToolIcon)() PURE;
@@ -152,6 +152,7 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorExtension, IUnknown, "{42D1141D-1455-47E
 #endif
 
     STDMETHOD(GetToolSet)(const CLSID **prgiidTools, int *piNumTools) PURE;
+    STDMETHOD(CreateTool)(REFCLSID rclsidTool, IScreenshotEditorTool **ppToolOut) PURE;
 };
 // {42D1141D-1455-47EA-A610-089D87173C8E}
 DEFINE_GUID(IID_IScreenshotEditorExtension,
