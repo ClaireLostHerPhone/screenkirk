@@ -35,12 +35,17 @@ const TCHAR c_szEditorFloatingToolbarClassName[] = TEXT("screenkirk_EditorFloati
 class CEditorFloatingToolbar : public CWindow<CEditorFloatingToolbar, c_szEditorFloatingToolbarClassName>
 {
     HWND _hwndEditor;
-    HWND _hwndToolbar;
+    HWND _hwndToolbarTools;
+    HWND _hwndToolbarActions;
 
 protected:
     LRESULT v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override;
 
     HRESULT _OnCreate();
+    LRESULT _OnCommand(WPARAM wParam, LPARAM lParam);
+    LRESULT _OnNotify(NMHDR *pnmh, WPARAM wParam, bool *pfHandled);
+
+    HRESULT _UnselectTool();
 
 public:
     enum Command
@@ -48,6 +53,7 @@ public:
         IDM_DISCARD = 100,
         IDM_COPY,
         IDM_SAVE,
+        IDM_OPENINEXTERNALEDITOR,
 
         IDM_TOOLFIRST = 200,
     };
@@ -58,6 +64,8 @@ public:
      * 
      */
     static CEditorFloatingToolbar *Create(HWND hwndEditor);
+
+    HRESULT OnToolChanged(ScreenshotEditorTool toolNew);
 };
 
 class CRenderObject
@@ -118,7 +126,7 @@ class CScreenshotEditorRendererGDI
         IScreenshotEditorObject *pIfaceObj, OUT CRenderObject **ppRenderObjOut, OUT int *pIdxOut = nullptr);
 
 public:
-    static constexpr int c_iRadiusSelHelper = 8;
+    static constexpr int c_iRadiusSelHelper = 9;
     static constexpr int c_idTimerMarquee = 101;
 
     CScreenshotEditorRendererGDI(CScreenshotContext *pCtx, HWND hwndRenderTarget)

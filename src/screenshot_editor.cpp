@@ -52,32 +52,16 @@ LRESULT CEditorFloatingToolbar::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
 
         case WM_COMMAND:
         {
-            if (LOWORD(wParam) >= IDM_TOOLFIRST)
-            {
-                SendMessage(_hwndEditor, CScreenshotEditorWindow::WM_SSE_CHANGETOOL, LOWORD(wParam) - IDM_TOOLFIRST, 0);
-            }
-            else switch (LOWORD(wParam))
-            {
-                case IDM_DISCARD:
-                {
-                    DestroyWindow(_hwndEditor);
-                    break;
-                }
+            return _OnCommand(wParam, lParam);
+        }
 
-                case IDM_COPY:
-                {
-                    SendMessage(_hwndEditor, CScreenshotEditorWindow::WM_SSE_COPYTOCLIPBOARD, 0, 0);
-                    break;
-                }
-
-                case IDM_SAVE:
-                {
-                    MessageBox(_hwndEditor, TEXT("This operation has yet to be implemented."), TEXT("Unimplemented!"), MB_OK | MB_ICONERROR);
-                    break;
-                }
-            }
-
-            break;
+        case WM_NOTIFY:
+        {
+            NMHDR *pnmh = (NMHDR *)lParam;
+            bool fHandled = false;
+            LRESULT lr = _OnNotify(pnmh, wParam, &fHandled);
+            if (fHandled)
+                return lr;
         }
     }
 
@@ -89,53 +73,303 @@ HRESULT CEditorFloatingToolbar::_OnCreate()
     RECT rcClient;
     GetClientRect(_hwnd, &rcClient);
 
-    _hwndToolbar = CreateWindowEx(
+    _hwndToolbarActions = CreateWindowEx(
         0,
         TOOLBARCLASSNAME,
         nullptr,
-        WS_VISIBLE | WS_CHILD | CCS_NORESIZE | TBSTYLE_WRAPABLE,
+        WS_VISIBLE | WS_CHILD | TBSTYLE_LIST | TBSTYLE_FLAT | CCS_NOPARENTALIGN | CCS_NOMOVEY | CCS_NORESIZE,
         0, 0,
-        RECTWIDTH(rcClient), RECTHEIGHT(rcClient),
+        0, 0,
         _hwnd,
         nullptr,
         g_hinst,
         nullptr
     );
 
-    if (!_hwndToolbar)
+    if (!_hwndToolbarActions)
     {
         return E_FAIL;
     }
 
-    TBBUTTON rgtbButtons[5] = { 0 };
+    SendMessage(_hwndToolbarActions, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
+    SendMessage(_hwndToolbarActions, TB_SETEXTENDEDSTYLE, 0, TBSTYLE_EX_DOUBLEBUFFER | TBSTYLE_EX_DRAWDDARROWS);
 
-    rgtbButtons[0].idCommand = IDM_TOOLFIRST + SSET_SELECT;
-    rgtbButtons[0].iString = (INT_PTR)TEXT("Select");
-    rgtbButtons[0].fsState = TBSTATE_ENABLED;
-    rgtbButtons[0].fsStyle = BTNS_BUTTON;
+    TBBUTTON rgtbButTools[4] = { 0 };
+    {
+        // Eventually, I want to make this load icons from alternative sources (perhaps
+        // shell32 or imageres) as the operating system supports it. This is fine for now
+        // though.
+        TBADDBITMAP ab = { HINST_COMMCTRL, IDB_STD_SMALL_COLOR };
+        SendMessage(_hwndToolbarActions, TB_ADDBITMAP, 15, (LPARAM)&ab);
 
-    rgtbButtons[1].idCommand = IDM_TOOLFIRST + SSET_DRAG;
-    rgtbButtons[1].iString = (INT_PTR)TEXT("Move");
-    rgtbButtons[1].fsState = TBSTATE_ENABLED;
-    rgtbButtons[1].fsStyle = BTNS_BUTTON;
+        int i = 0;
 
-    rgtbButtons[2].idCommand = IDM_COPY;
-    rgtbButtons[2].iString = (INT_PTR)TEXT("Copy");
-    rgtbButtons[2].fsState = TBSTATE_ENABLED | TBSTATE_WRAP;
-    rgtbButtons[2].fsStyle = BTNS_BUTTON;
+        rgtbButTools[i].idCommand = IDM_OPENINEXTERNALEDITOR;
+        rgtbButTools[i].iString = (INT_PTR)TEXT("Open in...");
+        rgtbButTools[i].fsState = TBSTATE_ENABLED;
+        rgtbButTools[i].fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_DROPDOWN;
+        rgtbButTools[i].iBitmap = STD_FILENEW; // Temporary icon.
 
-    rgtbButtons[3].idCommand = IDM_SAVE;
-    rgtbButtons[3].iString = (INT_PTR)TEXT("Save");
-    rgtbButtons[3].fsState = TBSTATE_ENABLED;
-    rgtbButtons[3].fsStyle = BTNS_BUTTON;
+        i++;
+        rgtbButTools[i].idCommand = IDM_COPY;
+        rgtbButTools[i].iString = (INT_PTR)TEXT("Copy");
+        rgtbButTools[i].fsState = TBSTATE_ENABLED;
+        rgtbButTools[i].fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE;
+        rgtbButTools[i].iBitmap = STD_COPY;
 
-    rgtbButtons[4].idCommand = IDM_DISCARD;
-    rgtbButtons[4].iString = (INT_PTR)TEXT("Discard");
-    rgtbButtons[4].fsState = TBSTATE_ENABLED;
-    rgtbButtons[4].fsStyle = BTNS_BUTTON;
+        i++;
+        rgtbButTools[i].idCommand = IDM_SAVE;
+        rgtbButTools[i].iString = (INT_PTR)TEXT("Save");
+        rgtbButTools[i].fsState = TBSTATE_ENABLED;
+        rgtbButTools[i].fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE;
+        rgtbButTools[i].iBitmap = STD_FILESAVE;
 
-    SendMessage(_hwndToolbar, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
-    SendMessage(_hwndToolbar, TB_ADDBUTTONS, 5, (LPARAM)&rgtbButtons);
+        i++;
+        rgtbButTools[i].idCommand = IDM_DISCARD;
+        rgtbButTools[i].iString = (INT_PTR)TEXT("Discard");
+        rgtbButTools[i].fsState = TBSTATE_ENABLED;
+        rgtbButTools[i].fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE;
+        rgtbButTools[i].iBitmap = STD_DELETE;
+    }
+
+    SendMessage(_hwndToolbarActions, TB_ADDBUTTONS, ARRAYSIZE(rgtbButTools), (LPARAM)&rgtbButTools);
+
+    SIZE sizeActionsIdeal;
+    SendMessage(_hwndToolbarActions, TB_GETMAXSIZE, FALSE, (LPARAM)&sizeActionsIdeal);
+    
+    RECT rcActions;
+    rcActions.left = 0;
+    rcActions.top = 0;
+    rcActions.right = rcActions.left;
+    rcActions.bottom = rcActions.top + sizeActionsIdeal.cy;
+
+    // Getting the maximum size of the toolbar doesn't actually work out so well, so we will just
+    // calculate it manually...
+    for (int i = 0, j = SendMessage(_hwndToolbarActions, TB_BUTTONCOUNT, 0, 0); i < j; i++)
+    {
+        RECT rcItem;
+        SendMessage(_hwndToolbarActions, TB_GETITEMRECT, i, (LPARAM)&rcItem);
+
+        if (RECTHEIGHT(rcActions) < RECTHEIGHT(rcItem))
+        {
+            rcActions.bottom = rcActions.top + RECTHEIGHT(rcItem);
+        }
+
+        rcActions.right += RECTWIDTH(rcItem);
+    }
+
+    // Cooperating with the autosize logic is incredibly annoying. We set the window size
+    // intermediately here in order to make the TB_AUTOSIZE message for the next toolbar
+    // scale to just about the right size. I cannot get it to scale to the right size,
+    // and if I wanted to use CCS_NORESIZE, then I would need to recreate the behavior.
+    // I might just do that anyway since I think it would get the best results.
+    {
+        DWORD dwStyle = GetWindowLong(_hwnd, GWL_STYLE);
+        DWORD dwExStyle = GetWindowLong(_hwnd, GWL_EXSTYLE);
+
+        RECT rcAdjusted;
+        rcAdjusted.left = rcAdjusted.top = 0;
+        rcAdjusted.right = RECTWIDTH(rcActions);
+        rcAdjusted.bottom = RECTHEIGHT(rcActions);
+        AdjustWindowRectEx(&rcAdjusted, dwStyle, FALSE, dwExStyle);
+
+        SetWindowPos(
+            _hwnd,
+            nullptr,
+            0, 0,
+            RECTWIDTH(rcActions), RECTHEIGHT(rcActions),
+            SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_FRAMECHANGED
+        );
+    }
+
+    _hwndToolbarTools = CreateWindowEx(
+        0,
+        TOOLBARCLASSNAME,
+        nullptr,
+        WS_VISIBLE | WS_CHILD | TBSTYLE_WRAPABLE | TBSTYLE_TOOLTIPS | TBSTYLE_LIST | TBSTYLE_FLAT | CCS_TOP,
+        0, 0,
+        0, 0,
+        _hwnd,
+        nullptr,
+        g_hinst,
+        nullptr
+    );
+
+    if (!_hwndToolbarTools)
+    {
+        return E_FAIL;
+    }
+
+    SendMessage(_hwndToolbarTools, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
+
+    TBBUTTON rgtbButtons[2] = { 0 };
+    {
+        int i = 0;
+
+        // This bitmap loading routine is bad (I want to load from icons anyway), but it
+        // works for now.
+        HBITMAP hbmSelect = (HBITMAP)LoadImage(g_hinst, MAKEINTRESOURCE(IDB_TOOLSELECT), IMAGE_BITMAP, 16, 16, LR_DEFAULTCOLOR);
+        HBITMAP hbmMove = (HBITMAP)LoadImage(g_hinst, MAKEINTRESOURCE(IDB_TOOLMOVE), IMAGE_BITMAP, 16, 16, LR_DEFAULTCOLOR);
+
+        TBADDBITMAP ab = { nullptr, (UINT_PTR)hbmSelect };
+        SendMessage(_hwndToolbarTools, TB_ADDBITMAP, 1, (LPARAM)&ab);
+        ab = { nullptr, (UINT_PTR)hbmMove };
+        SendMessage(_hwndToolbarTools, TB_ADDBITMAP, 1, (LPARAM)&ab);
+
+        rgtbButtons[i].idCommand = IDM_TOOLFIRST + SSET_SELECT;
+        rgtbButtons[i].dwData = (INT_PTR)TEXT("Select");
+        rgtbButtons[i].fsState = TBSTATE_ENABLED;
+        rgtbButtons[i].fsStyle = BTNS_CHECK;
+        rgtbButtons[i].iBitmap = 0;
+
+        i++;
+        rgtbButtons[i].idCommand = IDM_TOOLFIRST + SSET_DRAG;
+        rgtbButtons[i].dwData = (INT_PTR)TEXT("Move");
+        rgtbButtons[i].fsState = TBSTATE_ENABLED;
+        rgtbButtons[i].fsStyle = BTNS_CHECK;
+        rgtbButtons[i].iBitmap = 1;
+
+        //for (; i < 40; i++)
+        //{
+        //    TCHAR *pszHeapLabel = new TCHAR[MAX_PATH]; // leaked
+        //    _stprintf_s(pszHeapLabel, MAX_PATH, TEXT("Test item #%d"), i - 1);
+
+        //    rgtbButtons[i].idCommand = IDM_TOOLFIRST + SSET_ILLEGAL;
+        //    rgtbButtons[i].dwData = (INT_PTR)pszHeapLabel;
+        //    rgtbButtons[i].fsState = TBSTATE_ENABLED;
+        //    rgtbButtons[i].fsStyle = BTNS_CHECK;
+        //}
+    }
+
+    SendMessage(_hwndToolbarTools, TB_ADDBUTTONS, ARRAYSIZE(rgtbButtons), (LPARAM)&rgtbButtons);
+    SendMessage(_hwndToolbarTools, TB_AUTOSIZE, 0, 0);
+
+    RECT rcTools;
+    GetWindowRect(_hwndToolbarTools, &rcTools);
+    MapWindowPoints(HWND_DESKTOP, GetParent(_hwndToolbarTools), (LPPOINT)&rcTools, 2);
+
+    // Move the actions strip to appear below the toolbox:
+    OffsetRect(&rcActions, 0, rcTools.bottom);
+
+    // I feel that the actions strip looks a bit off with the height that common
+    // controls gives, so I'll make it a little bigger manually:
+    rcActions.bottom += 2;
+
+    RECT rcUnion;
+    UnionRect(&rcUnion, &rcTools, &rcActions);
+
+    DWORD dwStyle = GetWindowLong(_hwnd, GWL_STYLE);
+    DWORD dwExStyle = GetWindowLong(_hwnd, GWL_EXSTYLE);
+
+    RECT rcAdjusted;
+    rcAdjusted.left = rcAdjusted.top = 0;
+    rcAdjusted.right = RECTWIDTH(rcUnion);
+    rcAdjusted.bottom = RECTHEIGHT(rcUnion);
+    AdjustWindowRectEx(&rcAdjusted, dwStyle, FALSE, dwExStyle);
+
+    SetWindowPos(
+        _hwndToolbarActions,
+        _hwndToolbarTools,
+        rcActions.left, rcActions.top,
+        RECTWIDTH(rcAdjusted), RECTHEIGHT(rcActions),
+        SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_FRAMECHANGED
+    );
+    SetWindowPos(
+        _hwndToolbarTools,
+        nullptr,
+        rcTools.left, rcTools.top,
+        RECTWIDTH(rcAdjusted), RECTHEIGHT(rcTools),
+        SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_FRAMECHANGED
+    );
+
+    SetWindowPos(
+        _hwnd,
+        nullptr,
+        0, 0,
+        RECTWIDTH(rcAdjusted), RECTHEIGHT(rcAdjusted),
+        SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_FRAMECHANGED
+    );
+
+    return S_OK;
+}
+
+LRESULT CEditorFloatingToolbar::_OnCommand(WPARAM wParam, LPARAM lParam)
+{
+    if (LOWORD(wParam) >= IDM_TOOLFIRST)
+    {
+        SendMessage(_hwndEditor, CScreenshotEditorWindow::WM_SSE_CHANGETOOL, LOWORD(wParam) - IDM_TOOLFIRST, 0);
+    }
+    else switch (LOWORD(wParam))
+    {
+        case IDM_DISCARD:
+        {
+            DestroyWindow(_hwndEditor);
+            break;
+        }
+
+        case IDM_COPY:
+        {
+            SendMessage(_hwndEditor, CScreenshotEditorWindow::WM_SSE_COPYTOCLIPBOARD, 0, 0);
+            break;
+        }
+
+        case IDM_OPENINEXTERNALEDITOR:
+        case IDM_SAVE:
+        {
+            MessageBox(_hwndEditor, TEXT("This operation has yet to be implemented."), TEXT("Unimplemented!"), MB_OK | MB_ICONERROR);
+            break;
+        }
+    }
+
+    return 0;
+}
+
+LRESULT CEditorFloatingToolbar::_OnNotify(NMHDR *pnmh, WPARAM wParam, bool *pfHandled)
+{
+    if (pnmh->code == TTN_GETDISPINFO)
+    {
+        NMTTDISPINFO *pDispInfo = (NMTTDISPINFO *)pnmh;
+
+        TBBUTTONINFO tbbi = { sizeof(tbbi) };
+        tbbi.dwMask = TBIF_LPARAM;
+        if (SendMessage(_hwndToolbarTools, TB_GETBUTTONINFO, pDispInfo->hdr.idFrom, (LPARAM)&tbbi) > -1)
+        {
+            pDispInfo->lpszText = (TCHAR *)tbbi.lParam;
+            return 0;
+        }
+    }
+    else if (pnmh->code == NM_CUSTOMDRAW && pnmh->hwndFrom == _hwndToolbarActions)
+    {
+        NMTBCUSTOMDRAW *ptbcd = (NMTBCUSTOMDRAW *)pnmh;
+
+        switch (ptbcd->nmcd.dwDrawStage)
+        {
+            case CDDS_PREPAINT:
+            {
+                RECT rc;
+                GetClientRect(pnmh->hwndFrom, &rc);
+                FillRect(ptbcd->nmcd.hdc, &rc, GetSysColorBrush(COLOR_BTNFACE));
+                *pfHandled = true;
+                return CDRF_DODEFAULT;
+            }
+        }
+    }
+
+    return 0;
+}
+
+HRESULT CEditorFloatingToolbar::_UnselectTool()
+{
+    for (int i = 0, j = SendMessage(_hwndToolbarTools, TB_BUTTONCOUNT, 0, 0); i < j; i++)
+    {
+        TBBUTTON tbb;
+        SendMessage(_hwndToolbarTools, TB_GETBUTTON, i, (LPARAM)&tbb);
+
+        if (tbb.fsState & TBSTATE_CHECKED)
+        {
+            SendMessage(_hwndToolbarTools, TB_CHECKBUTTON, tbb.idCommand, FALSE);
+        }
+    }
 
     return S_OK;
 }
@@ -145,7 +379,7 @@ HRESULT CEditorFloatingToolbar::RegisterWindowClass()
 {
     WNDCLASS cls = {};
     cls.hInstance = g_hinst;
-    cls.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    cls.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     cls.hCursor = LoadCursor(nullptr, IDC_ARROW);
     cls.hIcon = LoadIcon(g_hinst, MAKEINTRESOURCE(IDI_APP));
 
@@ -165,7 +399,7 @@ CEditorFloatingToolbar *CEditorFloatingToolbar::Create(HWND hwndEditor)
         TEXT("Tools"),
         WS_CAPTION | WS_SYSMENU,
         0, 0,
-        300, 600,
+        0, 0,
         nullptr,
         nullptr,
         g_hinst,
@@ -174,6 +408,16 @@ CEditorFloatingToolbar *CEditorFloatingToolbar::Create(HWND hwndEditor)
     pWnd->_hwndEditor = hwndEditor;
 
     return pWnd;
+}
+
+HRESULT CEditorFloatingToolbar::OnToolChanged(ScreenshotEditorTool toolNew)
+{
+    assert(SUCCEEDED(_UnselectTool()));
+
+    // If the requested tool has no toolbar item, then this will supposedly fail.
+    assert(SendMessage(_hwndToolbarTools, TB_CHECKBUTTON, toolNew + IDM_TOOLFIRST, TRUE));
+
+    return S_OK;
 }
 
 //
@@ -1222,6 +1466,8 @@ HRESULT CScreenshotEditorWindow::_ChangeTool(ScreenshotEditorTool newTool)
     _UpdateCursor();
 
     _pRenderer->UpdateSizingHelpersVisibility(_tool == SSET_DRAG);
+    if (_pFloatingToolbar)
+        _pFloatingToolbar->OnToolChanged(newTool);
 
     return S_OK;
 }
@@ -1236,6 +1482,7 @@ void CScreenshotEditorWindow::_ShowFloatingToolbar()
     if (!_pFloatingToolbar)
     {
         _pFloatingToolbar = CEditorFloatingToolbar::Create(_hwnd);
+        _pFloatingToolbar->OnToolChanged(_tool);
     }
 
     if (_pFloatingToolbar)

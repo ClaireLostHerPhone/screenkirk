@@ -3,6 +3,9 @@
 
 IDI_APP ICON "resource/app.ico"
 
+IDB_TOOLSELECT BITMAP "resource/tool_select.bmp"
+IDB_TOOLMOVE BITMAP "resource/tool_move.bmp"
+
 #define VER_FILEVERSION             1,00,0,0
 #define VER_FILEVERSION_STR         "1.0"
 
