@@ -3,9 +3,7 @@
 
 class CTextEditorTool : public IScreenshotEditorTool
 {
-    ULONG _uRefCount;
     IUnknown *_pUnkSite;
-
     IScreenshotEditor *_pEditor;
 
 public:

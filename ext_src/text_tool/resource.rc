@@ -1,7 +1,4 @@
 #include <windows.h>
-#include "resource.h"
-
-IDI_APP ICON "resource/app.ico"
 
 #define VER_FILEVERSION             1,00,0,0
 #define VER_FILEVERSION_STR         "1.0"

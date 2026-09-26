@@ -11,7 +11,7 @@ public:
     STDMETHODIMP GetVersionString(OUT const TCHAR **pszOut) override;
     STDMETHODIMP GetAuthor(OUT const TCHAR **pszOut) override;
 
-    STDMETHODIMP GetToolSet(const CLSID **prgiidTools, int *piNumTools) override;
+    STDMETHODIMP GetToolSet(const CLSID **prgclsidTools, int *piNumTools) override;
     STDMETHODIMP CreateTool(REFCLSID rclsidTool, IScreenshotEditorTool **ppToolOut) override;
     //@End IScreenshotEditorExtension
 };

@@ -8,8 +8,9 @@ enum ScreenshotEditorTool
 {
     SSET_SELECT,
     SSET_DRAG,
-    SSET_EXTENSION, // Used for extensions. Not really currently implemented.
     SSET_ILLEGAL, // Used as a fallback if an extension tool fails.
+
+    SSET_EXTENSIONFIRST, // Used for extensions. Not really currently implemented.
 };
 
 /**
@@ -28,13 +29,20 @@ enum DragMode
     DRAGM_SIZESE = DRAGM_SIZES | DRAGM_SIZEE, // Bottom-right corner
 };
 
+struct ExtensionToolInfo
+{
+    IScreenshotEditorTool *pTool;
+    UINT idTool;
+    const TCHAR *pszToolName;
+};
+
 //
 // Editor floating toolbar (used in fullscreen mode)
 //
 const TCHAR c_szEditorFloatingToolbarClassName[] = TEXT("screenkirk_EditorFloatingToolbar");
 class CEditorFloatingToolbar : public CWindow<CEditorFloatingToolbar, c_szEditorFloatingToolbarClassName>
 {
-    HWND _hwndEditor;
+    class CScreenshotEditorWindow *_pEditor;
     HWND _hwndToolbarTools;
     HWND _hwndToolbarActions;
 
@@ -63,7 +71,7 @@ public:
     /**
      * 
      */
-    static CEditorFloatingToolbar *Create(HWND hwndEditor);
+    static CEditorFloatingToolbar *Create(class CScreenshotEditorWindow *pEditor);
 
     HRESULT OnToolChanged(ScreenshotEditorTool toolNew);
 };
@@ -161,6 +169,7 @@ class CScreenshotEditorWindow
     CScreenshotEditorRendererGDI *_pRenderer = nullptr;
     CEditorFloatingToolbar *_pFloatingToolbar = nullptr;
     CDynamicArray<IScreenshotEditorObject *> _vObjs;
+    CDynamicArray<ExtensionToolInfo> _vExtToolInfo;
     POINT _ptSelectionOrigin;
     RECT _rcSelection;
     RECT _rcDragBegin;
@@ -172,6 +181,11 @@ class CScreenshotEditorWindow
     bool _fHasAnySelectionMade = false;
 
 protected:
+    inline bool _IsExtensionTool()
+    {
+        return _tool >= SSET_EXTENSIONFIRST;
+    }
+
     LRESULT v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override;
     LRESULT _OnDestroy();
     LRESULT _OnKeyDown(WPARAM virtualKey, LPARAM lParam);
@@ -227,6 +241,8 @@ public:
     //@End IScreenshotEditor
 
     HRESULT CopyToClipboardAndAccept();
+    int GetExtensionToolCount();
+    HRESULT GetExtensionToolInfo(int idx, OUT ExtensionToolInfo *pExtToolInfo);
 
     static HRESULT RegisterWindowClass();
 

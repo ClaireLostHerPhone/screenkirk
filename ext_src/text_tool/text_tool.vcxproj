@@ -76,6 +76,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+	  <ModuleDefintionFile>text_tool.def</ModuleDefintionFile>
     </Link>
 	<Manifest>
       <EnableDPIAwareness>PerMonitorHighDPIAware</EnableDPIAwareness>
@@ -86,7 +87,6 @@
     <ClCompile>
       <PreprocessorDefinitions>WIN32;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
-	
   </ItemDefinitionGroup>
   
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
@@ -117,6 +117,9 @@
   <ItemGroup>
     <ClInclude Include="../../include/*.h" />
     <ClInclude Include="*.h" />
+  </ItemGroup>
+  <ItemGroup>
+	<None Include="text_tool.def" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="*.rc" />

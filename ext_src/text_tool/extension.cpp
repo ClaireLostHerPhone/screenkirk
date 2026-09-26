@@ -29,18 +29,18 @@ STDMETHODIMP CTextEditorExtension::GetAuthor(OUT const TCHAR **pszOut)
     return StaticCoTaskMemStringAlloc(TEXT("ClaireLostHerPhone"), (TCHAR **)pszOut);
 }
 
-STDMETHODIMP CTextEditorExtension::GetToolSet(const CLSID **prgiidTools, int *piNumTools)
+STDMETHODIMP CTextEditorExtension::GetToolSet(const CLSID **prgclsidTools, int *piNumTools)
 {
-    if (!prgiidTools || !piNumTools)
+    if (!prgclsidTools || !piNumTools)
         return E_POINTER;
 
-    static const const CLSID rgiidTool[] = {
+    static const const CLSID rgclsidTool[] = {
         CLSID_TextEditorTool,
         { 0 },
     };
 
-    *prgiidTools = &rgiidTool[0];
-    *piNumTools = 1;
+    *prgclsidTools = &rgclsidTool[0];
+    *piNumTools = ARRAYSIZE(rgclsidTool) - 1;
     return S_OK;
 }
 

@@ -7,70 +7,63 @@
 // (in case I'm compiling to a platform without C++'s standard library) I am making this
 // interface.
 template <typename TContained>
-class CDynamicArray : private std::vector<TContained>
+class CDynamicArray
 {
     using Base = std::vector<TContained>;
+    using Iterator = typename Base::iterator;
+    Base _v;
 
 public:
-    CDynamicArray()
-        : Base()
+    inline Iterator begin()
     {
+        return _v.begin();
     }
 
-    ~CDynamicArray()
+    inline Iterator end()
     {
-    }
-
-    inline Base::iterator begin()
-    {
-        return Base::begin();
-    }
-
-    inline Base::iterator end()
-    {
-        return Base::end();
+        return _v.end();
     }
 
     inline bool IsEmpty()
     {
-        return Base::empty();
+        return _v.empty();
     }
 
     inline size_t GetSize()
     {
-        return Base::size();
+        return _v.size();
     }
 
     inline size_t GetCapacity()
     {
-        return Base::capacity();
+        return _v.capacity();
     }
 
     inline TContained &At(size_t position)
     {
-        return Base::at(position);
+        return _v.at(position);
     }
 
     inline TContained *First()
     {
-        return &Base::front();
+        return &_v.front();
     }
 
     inline TContained *Last()
     {
-        return &Base::back();
+        return &_v.back();
     }
 
     inline TContained &operator[](size_t position)
     {
-        return Base::operator[](position);
+        return _v.operator[](position);
     }
 
     inline HRESULT Push(const TContained &scalar)
     {
         try
         {
-            Base::push_back(scalar);
+            _v.push_back(scalar);
             return S_OK;
         }
         catch (std::bad_alloc ex)
@@ -87,7 +80,7 @@ public:
     {
         try
         {
-            Base::push_back(std::move(moved));
+            _v.push_back(std::move(moved));
             return S_OK;
         }
         catch (std::bad_alloc ex)
@@ -108,7 +101,7 @@ public:
             {
                 *pOut = *Last();
             }
-            Base::pop_back();
+            _v.pop_back();
             return S_OK;
         }
         catch (std::bad_alloc ex)
@@ -135,7 +128,7 @@ public:
         {
             try
             {
-                Base::erase(Base::begin() + offset);
+                _v.erase(_v.begin() + offset);
                 return S_OK;
             }
             catch (std::bad_alloc ex)
@@ -153,7 +146,7 @@ public:
     {
         try
         {
-            Base::resize(sizeNew);
+            _v.resize(sizeNew);
             return S_OK;
         }
         catch (std::bad_alloc ex)

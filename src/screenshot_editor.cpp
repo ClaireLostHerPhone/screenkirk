@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "screenshot_editor.h"
+#include "extmgr.h"
 #include "resource.h"
 #include <windowsx.h>
 #include <CommCtrl.h>
@@ -15,6 +16,9 @@ LRESULT CEditorFloatingToolbar::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
     {
         case WM_CREATE:
         {
+            CREATESTRUCT *pcs = (CREATESTRUCT *)lParam;
+            _pEditor = (CScreenshotEditorWindow *)pcs->lpCreateParams;
+
             if (FAILED(_OnCreate()))
             {
                 MessageBox(nullptr, TEXT("Failed floating toolbar creation routine."), TEXT("Error"), MB_OK | MB_ICONERROR);
@@ -35,7 +39,7 @@ LRESULT CEditorFloatingToolbar::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
 
             // If the window is activated, then it can be brought in front.
             // Otherwise, we'll keep it in front of the screenshot editor.
-            pwp->hwndInsertAfter = GetWindow(_hwndEditor, GW_HWNDPREV);
+            pwp->hwndInsertAfter = GetWindow(_pEditor->GetHWND(), GW_HWNDPREV);
             pwp->flags &= ~SWP_NOZORDER;
 
             return 0;
@@ -46,7 +50,7 @@ LRESULT CEditorFloatingToolbar::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
         case WM_KEYDOWN:
         case WM_KEYUP:
         {
-            PostMessage(_hwndEditor, uMsg, wParam, lParam);
+            PostMessage(_pEditor->GetHWND(), uMsg, wParam, lParam);
             // [[fallthrough]]
         }
 
@@ -202,7 +206,10 @@ HRESULT CEditorFloatingToolbar::_OnCreate()
 
     SendMessage(_hwndToolbarTools, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
 
-    TBBUTTON rgtbButtons[2] = { 0 };
+    int cExtTools = _pEditor->GetExtensionToolCount();
+    TBBUTTON *rgtbButtons = new TBBUTTON[2 + cExtTools];
+    DBGPRINT(TEXT("Extension tool count: %d"), cExtTools);
+    ZeroMemory(rgtbButtons, sizeof(TBBUTTON) * (2 + cExtTools));
     {
         int i = 0;
 
@@ -229,6 +236,24 @@ HRESULT CEditorFloatingToolbar::_OnCreate()
         rgtbButtons[i].fsStyle = BTNS_CHECK;
         rgtbButtons[i].iBitmap = 1;
 
+        for (int j = 0; j < _pEditor->GetExtensionToolCount(); j++)
+        {
+            ExtensionToolInfo eti;
+            if (SUCCEEDED(_pEditor->GetExtensionToolInfo(j, &eti)))
+            {
+                i++;
+                rgtbButtons[i].idCommand = IDM_TOOLFIRST + eti.idTool;
+                rgtbButtons[i].dwData = (INT_PTR)eti.pszToolName;
+                rgtbButtons[i].fsState = TBSTATE_ENABLED;
+                rgtbButtons[i].fsStyle = BTNS_CHECK;
+                rgtbButtons[i].iBitmap = 1; // TODO: What to do here?
+            }
+            else
+            {
+                DBGPRINT(TEXT("Failed to get extension tool info."));
+            }
+        }
+
         //for (; i < 40; i++)
         //{
         //    TCHAR *pszHeapLabel = new TCHAR[MAX_PATH]; // leaked
@@ -241,8 +266,10 @@ HRESULT CEditorFloatingToolbar::_OnCreate()
         //}
     }
 
-    SendMessage(_hwndToolbarTools, TB_ADDBUTTONS, ARRAYSIZE(rgtbButtons), (LPARAM)&rgtbButtons);
+    SendMessage(_hwndToolbarTools, TB_ADDBUTTONS, 2 + cExtTools, (LPARAM)rgtbButtons);
     SendMessage(_hwndToolbarTools, TB_AUTOSIZE, 0, 0);
+
+    delete rgtbButtons;
 
     RECT rcTools;
     GetWindowRect(_hwndToolbarTools, &rcTools);
@@ -295,28 +322,30 @@ HRESULT CEditorFloatingToolbar::_OnCreate()
 
 LRESULT CEditorFloatingToolbar::_OnCommand(WPARAM wParam, LPARAM lParam)
 {
+    HWND hwndEditor = _pEditor->GetHWND();
+
     if (LOWORD(wParam) >= IDM_TOOLFIRST)
     {
-        SendMessage(_hwndEditor, CScreenshotEditorWindow::WM_SSE_CHANGETOOL, LOWORD(wParam) - IDM_TOOLFIRST, 0);
+        SendMessage(hwndEditor, CScreenshotEditorWindow::WM_SSE_CHANGETOOL, LOWORD(wParam) - IDM_TOOLFIRST, 0);
     }
     else switch (LOWORD(wParam))
     {
         case IDM_DISCARD:
         {
-            DestroyWindow(_hwndEditor);
+            DestroyWindow(hwndEditor);
             break;
         }
 
         case IDM_COPY:
         {
-            SendMessage(_hwndEditor, CScreenshotEditorWindow::WM_SSE_COPYTOCLIPBOARD, 0, 0);
+            SendMessage(hwndEditor, CScreenshotEditorWindow::WM_SSE_COPYTOCLIPBOARD, 0, 0);
             break;
         }
 
         case IDM_OPENINEXTERNALEDITOR:
         case IDM_SAVE:
         {
-            MessageBox(_hwndEditor, TEXT("This operation has yet to be implemented."), TEXT("Unimplemented!"), MB_OK | MB_ICONERROR);
+            MessageBox(hwndEditor, TEXT("This operation has yet to be implemented."), TEXT("Unimplemented!"), MB_OK | MB_ICONERROR);
             break;
         }
     }
@@ -387,7 +416,7 @@ HRESULT CEditorFloatingToolbar::RegisterWindowClass()
 }
 
 // static
-CEditorFloatingToolbar *CEditorFloatingToolbar::Create(HWND hwndEditor)
+CEditorFloatingToolbar *CEditorFloatingToolbar::Create(CScreenshotEditorWindow *pEditor)
 {
     if (FAILED(RegisterWindowClass()))
     {
@@ -403,9 +432,8 @@ CEditorFloatingToolbar *CEditorFloatingToolbar::Create(HWND hwndEditor)
         nullptr,
         nullptr,
         g_hinst,
-        nullptr
+        pEditor
     );
-    pWnd->_hwndEditor = hwndEditor;
 
     return pWnd;
 }
@@ -1027,6 +1055,63 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
             }
             _ChangeTool(SSET_SELECT);
             SetWindowPos(_hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED);
+
+            // Preliminary extension tool loader:
+            CExtensionIterator *pExtIterator = nullptr;
+            CLoadedExtension *pLoadedExt = nullptr;
+            CExtensionManager::GetInstance()->IterateExtensions(&pExtIterator);
+
+            DBGPRINT(TEXT("Loading extension tools..."));
+            if (SUCCEEDED(pExtIterator->Get(&pLoadedExt)))
+            {
+                do
+                {
+                    IScreenshotEditorExtension *pExt = nullptr;
+                    if (SUCCEEDED(pLoadedExt->GetExtension(&pExt)))
+                    {
+                        const CLSID *rgclsid = nullptr;
+                        int cclsid = 0;
+
+                        if (SUCCEEDED(pExt->GetToolSet(&rgclsid, &cclsid)))
+                        {
+                            for (int i = 0; i < cclsid; i++)
+                            {
+                                IScreenshotEditorTool *pTool = nullptr;
+                                if (SUCCEEDED(pExt->CreateTool(rgclsid[i], &pTool)))
+                                {
+                                    ExtensionToolInfo eti = { 0 };
+                                    eti.idTool = SSET_EXTENSIONFIRST + _vExtToolInfo.GetSize(); // Last member's index + 1
+                                    assert(SUCCEEDED(pTool->GetToolName(&eti.pszToolName)));
+                                    eti.pTool = pTool;
+                                    DBGPRINT(TEXT("Created tool \"%s\" from extension \"%s\""),
+                                        eti.pszToolName,
+                                        pLoadedExt->_pszName ? pLoadedExt->_pszName : pLoadedExt->_pszDllName);
+                                    _vExtToolInfo.Push(std::move(eti));
+                                }
+                                else
+                                {
+                                    DBGPRINT(TEXT("Failed to create tool {%08lX-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X} from extension \"%s\""),
+                                        rgclsid[i].Data1, rgclsid[i].Data2, rgclsid[i].Data3,
+                                        rgclsid[i].Data4[0], rgclsid[i].Data4[1], rgclsid[i].Data4[2], rgclsid[i].Data4[3],
+                                        rgclsid[i].Data4[4], rgclsid[i].Data4[5], rgclsid[i].Data4[6], rgclsid[i].Data4[7],
+                                        pLoadedExt->_pszName ? pLoadedExt->_pszName : pLoadedExt->_pszDllName);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            DBGPRINT(TEXT("Failed to get tool set from extension \"%s\""),
+                                pLoadedExt->_pszName ? pLoadedExt->_pszName : pLoadedExt->_pszDllName);
+                        }
+                    }
+                    else
+                    {
+                        DBGPRINT(TEXT("Failed to get extension from CLoadedExtension."));
+                    }
+                }
+                while (SUCCEEDED(pExtIterator->GetNext(&pLoadedExt)));
+            }
+
             break;
         }
 
@@ -1043,7 +1128,7 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
         case WM_KEYUP:
         {
             HRESULT hrExtensionTool = S_FALSE;
-            if (_tool == SSET_EXTENSION && _pExtTool)
+            if (_IsExtensionTool() && _pExtTool)
             {
                 hrExtensionTool = _pExtTool->OnKeyDown(wParam, lParam);
 
@@ -1150,7 +1235,7 @@ LRESULT CScreenshotEditorWindow::_OnDestroy()
 LRESULT CScreenshotEditorWindow::_OnKeyDown(WPARAM virtualKey, LPARAM lParam)
 {
     HRESULT hrExtensionTool = S_FALSE;
-    if (_tool == SSET_EXTENSION && _pExtTool)
+    if (_IsExtensionTool() && _pExtTool)
     {
         hrExtensionTool = _pExtTool->OnKeyDown(virtualKey, lParam);
 
@@ -1328,7 +1413,7 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
             _UpdateCursor();
         }
     }
-    else if (_tool == SSET_EXTENSION && _pExtTool)
+    else if (_IsExtensionTool() && _pExtTool)
     {
         HRESULT hr = _pExtTool->OnMouseMove(x, y, flags);
         if (hr == S_FALSE)
@@ -1353,7 +1438,7 @@ LRESULT CScreenshotEditorWindow::_OnMouseLButtonDown(int x, int y, WPARAM flags)
     {
         _rcDragBegin = _rcSelection;
     }
-    else if (_tool == SSET_EXTENSION && _pExtTool)
+    else if (_IsExtensionTool() && _pExtTool)
     {
         HRESULT hr = _pExtTool->OnMouseLButtonDown(x, y, flags);
         if (hr == S_FALSE)
@@ -1383,7 +1468,7 @@ LRESULT CScreenshotEditorWindow::_OnMouseLButtonUp(int x, int y, WPARAM flags)
     _fIsSelectingRegion = false;
     _ptSelectionOrigin = { 0 };
 
-    if (_tool == SSET_EXTENSION && _pExtTool)
+    if (_IsExtensionTool() && _pExtTool)
     {
         HRESULT hr = _pExtTool->OnMouseLButtonUp(x, y, flags);
         if (hr == S_FALSE)
@@ -1408,7 +1493,7 @@ LRESULT CScreenshotEditorWindow::_OnMouseRButtonDown(int x, int y, WPARAM flags)
         _fIsSelectingRegion = false;
         _ptSelectionOrigin = { 0, 0 };
     }
-    else if (_tool == SSET_EXTENSION && _pExtTool)
+    else if (_IsExtensionTool() && _pExtTool)
     {
         HRESULT hr = _pExtTool->OnMouseRButtonDown(x, y, flags);
         if (hr == S_FALSE)
@@ -1422,7 +1507,7 @@ LRESULT CScreenshotEditorWindow::_OnMouseRButtonDown(int x, int y, WPARAM flags)
 
 LRESULT CScreenshotEditorWindow::_OnMouseRButtonUp(int x, int y, WPARAM flags)
 {
-    if (_tool == SSET_EXTENSION && _pExtTool)
+    if (_IsExtensionTool() && _pExtTool)
     {
         HRESULT hr = _pExtTool->OnMouseRButtonUp(x, y, flags);
         if (hr == S_FALSE)
@@ -1446,7 +1531,7 @@ HRESULT CScreenshotEditorWindow::_ChangeTool(ScreenshotEditorTool newTool)
         _tool = SSET_DRAG;
         _pRenderer->SetMarqueeSelection(true);
     }
-    else if (newTool == SSET_EXTENSION)
+    else if (_IsExtensionTool())
     {
         // Do whatever to get _pExtTool, then call this to allow the extension to reject
         // switching:
@@ -1481,7 +1566,7 @@ void CScreenshotEditorWindow::_ShowFloatingToolbar()
     // If we don't have a toolbar yet, then we will create one:
     if (!_pFloatingToolbar)
     {
-        _pFloatingToolbar = CEditorFloatingToolbar::Create(_hwnd);
+        _pFloatingToolbar = CEditorFloatingToolbar::Create(this);
         _pFloatingToolbar->OnToolChanged(_tool);
     }
 
@@ -1514,6 +1599,14 @@ void CScreenshotEditorWindow::_UpdateCursor()
     else
 #endif
     {
+        if (_IsExtensionTool())
+        {
+            if (_pExtTool && SUCCEEDED(_pExtTool->ApplyCursor()))
+            {
+                return;
+            }
+        }
+
         switch (_tool)
         {
             case SSET_SELECT:
@@ -1543,14 +1636,6 @@ void CScreenshotEditorWindow::_UpdateCursor()
                         break;
                 }
                 break;
-            case SSET_EXTENSION:
-            {
-                if (_pExtTool && SUCCEEDED(_pExtTool->ApplyCursor()))
-                {
-                    return;
-                }
-                break;
-            }
             case SSET_ILLEGAL:
                 idc = IDC_NO;
                 break;
@@ -1699,6 +1784,25 @@ HRESULT CScreenshotEditorWindow::CopyToClipboardAndAccept()
     }
 
     return S_OK;
+}
+
+int CScreenshotEditorWindow::GetExtensionToolCount()
+{
+    return _vExtToolInfo.GetSize();
+}
+
+HRESULT CScreenshotEditorWindow::GetExtensionToolInfo(int idx, OUT ExtensionToolInfo *pExtToolInfo)
+{
+    if (!pExtToolInfo)
+        return E_POINTER;
+
+    if (idx < _vExtToolInfo.GetSize())
+    {
+        *pExtToolInfo = _vExtToolInfo[idx];
+        return S_OK;
+    }
+
+    return E_BOUNDS;
 }
 
 // static

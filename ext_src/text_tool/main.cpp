@@ -7,8 +7,6 @@
 
 class CExtensionClassFactory : public IClassFactory
 {
-    ULONG _uRefCount;
-
 public:
     IMPLEMENT_IUNKNOWN;
 
@@ -65,7 +63,7 @@ STDMETHODIMP CExtensionClassFactory::LockServer(BOOL fLock)
 // DllGetClassObject & DllMain
 //
 
-__declspec(dllexport) extern "C" HRESULT DllGetClassObject(CLSID &rclsid, IID &riid, void **ppv)
+__declspec(dllexport) extern "C" HRESULT DllGetClassObject(REFCLSID rclsid, REFIID riid, void **ppv)
 {
     if (nullptr == &rclsid || nullptr == &riid || !ppv)
         return E_POINTER;

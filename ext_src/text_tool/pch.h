@@ -4,7 +4,6 @@
 #define NOMINMAX
 #include <windows.h>
 #include <tchar.h>
-#include "cunk.h"
 #include "screenkirk.h"
 
 #define RECTWIDTH(rc) ((rc).right - (rc).left)
@@ -29,7 +28,7 @@ inline HRESULT StaticCoTaskMemStringAlloc(const TCHAR (&sz)[N], TCHAR **pszOut)
 
 #define IMPLEMENT_IUNKNOWN                                                               \
 protected:                                                                               \
-    UINT _uRefCount;                                                                     \
+    ULONG _uRefCount;                                                                     \
 public:                                                                                  \
     STDMETHODIMP QueryInterface(const IID &riid, void **ppvOut) override;                \
     STDMETHODIMP_(ULONG) AddRef() override                                               \

@@ -1,21 +1,9 @@
 #include "pch.h"
-#include "dynarray.h"
+#include "extmgr.h"
 
 using DllGetClassObject_t = decltype(&DllGetClassObject);
 
-class CLoadedExtension
-{
-public:
-    HMODULE _hmod;
-    IScreenshotEditorExtension *_pExt;
-    TCHAR _szDllPath[MAX_PATH];
-    const TCHAR *_pszDllName;
-    const TCHAR *_pszName;
-    const TCHAR *_pszVersionStr;
-    const TCHAR *_pszAuthor;
-
-    ~CLoadedExtension();
-};
+CExtensionManager *g_pExtMgrInst = nullptr;
 
 CLoadedExtension::~CLoadedExtension()
 {
@@ -30,19 +18,79 @@ CLoadedExtension::~CLoadedExtension()
         _pExt->Release();
 }
 
-class CExtensionManager
+HRESULT CLoadedExtension::GetExtension(OUT IScreenshotEditorExtension **ppExt)
 {
-    CDynamicArray<CLoadedExtension> _vLoadedExts;
+    if (!ppExt)
+        return E_POINTER;
 
-public:
-    HRESULT LoadExtension(const TCHAR *pszPath);
-};
+    if (IsExtensionAvailable())
+    {
+        *ppExt = _pExt;
+        return S_OK;
+    }
 
-CExtensionManager g_extMgrInst;
+    return E_FAIL;
+}
+
+// static
+HRESULT CExtensionManager::CreateInstance()
+{
+    g_pExtMgrInst = new CExtensionManager();
+    DBGPRINT(TEXT("Initialized extension manager."));
+    return S_OK;
+}
+
+CExtensionManager *CExtensionManager::GetInstance()
+{
+    return g_pExtMgrInst;
+}
+
+HRESULT CExtensionManager::LoadAllExtensionsFromFolder(const TCHAR *pszFolder)
+{
+    TCHAR szFolderMatch[MAX_PATH] = { 0 };
+    _tcscpy_s(szFolderMatch, pszFolder);
+    _tcscat_s(szFolderMatch, TEXT("\\*.dll"));
+
+    DBGPRINT(TEXT("Loading all extensions from: %s"), szFolderMatch);
+
+    WIN32_FIND_DATA fd;
+    HANDLE hFile = FindFirstFile(szFolderMatch, &fd);
+
+    if (hFile == INVALID_HANDLE_VALUE)
+    {
+        return E_HANDLE;
+    }
+
+    HRESULT hrLoad = E_FAIL;
+
+    do
+    {
+        if (fd.dwFileAttributes & ~(FILE_ATTRIBUTE_DIRECTORY))
+        {
+            TCHAR szFilePathAbs[MAX_PATH] = { 0 };
+            _tcscpy_s(szFilePathAbs, pszFolder);
+            _tcscat_s(szFilePathAbs, TEXT("\\"));
+            _tcscat_s(szFilePathAbs, fd.cFileName);
+
+            DBGPRINT(TEXT("Going to load extension: %s"), szFilePathAbs);
+            hrLoad = LoadExtension(szFilePathAbs);
+
+            DBGPRINT(SUCCEEDED(hrLoad)
+                ? TEXT("Loaded extension \"%s\" successfully.")
+                : TEXT("Failed to load extension \"%s\"."), fd.cFileName);
+        }
+    }
+    while (FindNextFile(hFile, &fd) != FALSE);
+
+    FindClose(hFile);
+    return FAILED(hrLoad) ? S_FALSE : S_OK;
+}
 
 HRESULT CExtensionManager::LoadExtension(const TCHAR *pszPath)
 {
     CLoadedExtension le;
+
+    DBGPRINT(TEXT("Loading \"%s\""), pszPath);
 
     HMODULE hmod = LoadLibrary(pszPath);
     HRESULT hr = HRESULT_FROM_WIN32(GetLastError());
@@ -64,33 +112,97 @@ HRESULT CExtensionManager::LoadExtension(const TCHAR *pszPath)
         DllGetClassObject_t pfnDllGetClassObject = (DllGetClassObject_t)GetProcAddress(hmod, "DllGetClassObject");
         if (!pfnDllGetClassObject)
         {
+            _tprintf(TEXT("[" __FUNCTION__ "] " "Failed to get DllGetClassObject."));
             FreeLibrary(hmod);
-            return E_FAIL;
+            hr = E_FAIL;
         }
-
-        IClassFactory *pFac = nullptr;
-        hr = pfnDllGetClassObject(CLSID_ScreenshotEditorExtension, IID_PPV_ARGS(&pFac));
-        if (SUCCEEDED(hr))
+        else
         {
-            IScreenshotEditorExtension *pExt = nullptr;
-            hr = pFac->CreateInstance(nullptr, IID_PPV_ARGS(&pExt));
+            IClassFactory *pFac = nullptr;
+            hr = pfnDllGetClassObject(CLSID_ScreenshotEditorExtension, IID_PPV_ARGS(&pFac));
             if (SUCCEEDED(hr))
             {
-                le._pExt = pExt;
-                
-                if (FAILED(pExt->GetName(&le._pszName)))
-                    le._pszName = nullptr;
-                if (FAILED(pExt->GetVersionString(&le._pszVersionStr)))
-                    le._pszVersionStr = nullptr;
-                if (FAILED(pExt->GetAuthor(&le._pszAuthor)))
-                    le._pszAuthor = nullptr;
+                IScreenshotEditorExtension *pExt = nullptr;
+                hr = pFac->CreateInstance(nullptr, IID_PPV_ARGS(&pExt));
+                if (SUCCEEDED(hr))
+                {
+                    le._pExt = pExt;
 
-                _vLoadedExts.Push(std::move(le));
-                hr = S_OK;
+                    if (FAILED(pExt->GetName(&le._pszName)))
+                        le._pszName = nullptr;
+                    if (FAILED(pExt->GetVersionString(&le._pszVersionStr)))
+                        le._pszVersionStr = nullptr;
+                    if (FAILED(pExt->GetAuthor(&le._pszAuthor)))
+                        le._pszAuthor = nullptr;
+
+                    hr = S_OK;
+                }
+                else
+                {
+                    DBGPRINT(TEXT("Failed to create ScreenshotEditorExtension instance."));
+                }
+                pFac->Release();
             }
-            pFac->Release();
+            else
+            {
+                DBGPRINT(TEXT("Failed to create class factory instance."));
+            }
         }
     }
+    else
+    {
+        DBGPRINT(TEXT("Failed to load library."));
+    }
 
+    le._hr = hr;
+    _vLoadedExts.Push(std::move(le));
     return hr;
+}
+
+HRESULT CExtensionManager::IterateExtensions(OUT CExtensionIterator **ppLoadedExtension)
+{
+    if (!ppLoadedExtension)
+        return E_POINTER;
+
+    *ppLoadedExtension = new (std::nothrow) CExtensionIterator(this);
+    return *ppLoadedExtension ? S_OK : E_OUTOFMEMORY;
+}
+
+//
+// CExtensionIterator
+//
+
+HRESULT CExtensionIterator::Get(OUT CLoadedExtension **ppExt)
+{
+    if (!ppExt)
+        return E_POINTER;
+
+    if (_uPos < _pExtMgr->_vLoadedExts.GetSize())
+    {
+        *ppExt = &_pExtMgr->_vLoadedExts[_uPos];
+    }
+    else
+    {
+        return E_BOUNDS;
+    }
+
+    return S_OK;
+}
+
+HRESULT CExtensionIterator::GetNext(OUT CLoadedExtension **ppExt)
+{
+    if (!ppExt)
+        return E_POINTER;
+
+    if (_uPos + 1 < _pExtMgr->_vLoadedExts.GetSize())
+    {
+        _uPos++;
+        *ppExt = &_pExtMgr->_vLoadedExts[_uPos];
+    }
+    else
+    {
+        return E_BOUNDS;
+    }
+
+    return S_OK;
 }

@@ -1,0 +1,4 @@
+LIBRARY "text_tool"
+EXPORTS
+	DllGetClassObject PRIVATE
+	DllCanUnloadNow   PRIVATE

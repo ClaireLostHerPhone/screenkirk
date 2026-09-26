@@ -26,7 +26,7 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorObjectRenderer, IUnknown, "{56E23ECC-23B
     STDMETHOD(QueryInterface)(REFIID riid, OUT void **ppvOut) PURE;
     STDMETHOD_(ULONG, AddRef)() PURE;
     STDMETHOD_(ULONG, Release)() PURE;
-
+    
     STDMETHOD(Paint)() PURE;
 };
 // {56E23ECC-23B2-4033-BB8D-50FFDA763D10}
@@ -66,11 +66,42 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorObject, IObjectWithSite, "{841C133A-9960
     STDMETHOD(GetSite)(void *ppvSite) PURE;
     STDMETHOD(SetSite)(void *pUnkSite) PURE;
 
+    /**
+     * Called when the object is inserted into the document.
+     */
     STDMETHOD(InsertedIntoDocument)() PURE;
+
+    /**
+     * Gets a mask of tools which are capable of manipulating this object.
+     */
     STDMETHOD(GetManipulationToolMask)() PURE; // TODO: How to go about the parameters here?
-    STDMETHOD(GetLogicalRect)(IN RECT *prc) PURE; // An object's logical rect is relative to the document.
-    STDMETHOD(GetVisualRect)(IN RECT *prc) PURE; // An object's visual rect is relative to its logical rect.
+
+    /**
+     * Gets the logical bounding rectangle for the object.
+     * 
+     * An object's logical rectangle is relative to the document.
+     */
+    STDMETHOD(GetLogicalRect)(IN RECT *prc) PURE;
+
+    /**
+     * Gets the visual bounding rectangle for the object.
+     * 
+     * An object's visual rectangle is relative to its logical rectangle. It may have negative
+     * coordinates.
+     */
+    STDMETHOD(GetVisualRect)(IN RECT *prc) PURE;
+
+    /**
+     * Returns whether or not the visual is dirty.
+     * 
+     * An object with a dirty visual is prompted to be redrawn. The last clean visual is cached
+     * by the renderer, so the object will not be requested to redraw unless it is dirty.
+     */
     STDMETHOD_(BOOL, IsVisualDirty)() PURE;
+
+    /**
+     * Creates a renderer for this object.
+     */
     STDMETHOD(CreateRenderer)(const REFIID riid, OUT IScreenshotEditorObjectRenderer *pRendererOut) PURE;
 };
 // {841C133A-9960-44C3-9E95-C1349C731401}
@@ -115,20 +146,64 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorTool, IObjectWithSite, "{1C093E9E-696B-4
     STDMETHOD(GetSite)(REFIID riid, void **ppvSite) PURE;
     STDMETHOD(SetSite)(IUnknown *pUnkSite) PURE;
 
+    /**
+     * Called when the tool is selected.
+     */
     STDMETHOD(SelectTool)() PURE;
+
+    /**
+     * Gets the tool icon to be displayed in the toolbox.
+     */
     STDMETHOD_(HICON, GetToolIcon)() PURE;
+
+    /**
+     * Gets the name of the tool to be displayed in a tooltip when hovering the tool
+     * in the toolbox.
+     */
 #ifdef _UNICODE
     STDMETHOD(GetToolName)(OUT const WCHAR **pszOut) PURE;
 #else
     STDMETHOD(GetToolName)(OUT const CHAR **pszOut) PURE;
 #endif
+
+    /**
+     * Called when any keyboard key is pressed down in the document editor while the tool is selected.
+     */
     STDMETHOD(OnKeyDown)(int iVirtualKey, LPARAM lParam) PURE;
+
+    /**
+     * Called when any keyboard key is released in the document editor while the tool is selected.
+     */
     STDMETHOD(OnKeyUp)(int iVirtualKey, LPARAM lParam) PURE;
+
+    /**
+     * Called when the mouse is moved within the document editor while the tool is selected.
+     */
     STDMETHOD(OnMouseMove)(int x, int y, WPARAM flags) PURE;
+
+    /**
+     * Called when the left mouse button is pressed down in the document editor while the tool is selected.
+     */
     STDMETHOD(OnMouseLButtonDown)(LONG x, LONG y, WPARAM flags) PURE;
+
+    /**
+     * Called when the left mouse button is released in the document editor while the tool is selected.
+     */
     STDMETHOD(OnMouseLButtonUp)(LONG x, LONG y, WPARAM flags) PURE;
+
+    /**
+     * Called when the right mouse button is pressed down in the document editor while the tool is selected.
+     */
     STDMETHOD(OnMouseRButtonDown)(LONG x, LONG y, WPARAM flags) PURE;
+
+    /**
+     * Called when the right mouse button is released in the document editor while the tool is selected.
+     */
     STDMETHOD(OnMouseRButtonUp)(LONG x, LONG y, WPARAM flags) PURE;
+
+    /**
+     * Called to allow the tool to apply a new cursor.
+     */
     STDMETHOD(ApplyCursor)() PURE;
 };
 // {1C093E9E-696B-42CA-B4C3-67B793AF2D52}
@@ -142,8 +217,19 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorExtension, IUnknown, "{42D1141D-1455-47E
     STDMETHOD_(ULONG, Release)() PURE;
 
 #ifdef _UNICODE
+    /**
+     * Gets the name of the extension.
+     */
     STDMETHOD(GetName)(OUT const WCHAR **pszOut) PURE;
+
+    /**
+     * Gets the version of the extension as a string.
+     */
     STDMETHOD(GetVersionString)(OUT const WCHAR **pszOut) PURE;
+
+    /**
+     * Gets the name of the author of the extension.
+     */
     STDMETHOD(GetAuthor)(OUT const WCHAR **pszOut) PURE;
 #else
     STDMETHOD(GetName)(OUT const CHAR **pszOut) PURE;
@@ -151,8 +237,18 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorExtension, IUnknown, "{42D1141D-1455-47E
     STDMETHOD(GetAuthor)(OUT const CHAR **pszOut) PURE;
 #endif
 
-    STDMETHOD(GetToolSet)(const CLSID **prgiidTools, int *piNumTools) PURE;
-    STDMETHOD(CreateTool)(REFCLSID rclsidTool, IScreenshotEditorTool **ppToolOut) PURE;
+    /**
+     * Gets a set of tools provided by the extension.
+     * 
+     * This function puts out an array of CLSIDs for each tool. Tools must be constructed
+     * with a call to CreateTool on the same extension.
+     */
+    STDMETHOD(GetToolSet)(OUT const CLSID **prgclsidTools, OUT int *piNumTools) PURE;
+
+    /**
+     * Creates an instance of a tool which is provided by this extension.
+     */
+    STDMETHOD(CreateTool)(REFCLSID rclsidTool, OUT IScreenshotEditorTool **ppToolOut) PURE;
 };
 // {42D1141D-1455-47EA-A610-089D87173C8E}
 DEFINE_GUID(IID_IScreenshotEditorExtension,
