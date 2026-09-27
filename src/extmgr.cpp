@@ -6,7 +6,7 @@ using DllGetClassObject_t = decltype(&DllGetClassObject);
 
 CExtensionManager *g_pExtMgrInst = nullptr;
 
-HRESULT CLoadedExtension::UnloadExtension()
+HRESULT CExtensionContext::UnloadExtension()
 {
     if (_pszName)
         CoTaskMemFree((void *)_pszName);
@@ -21,7 +21,7 @@ HRESULT CLoadedExtension::UnloadExtension()
     return S_OK;
 }
 
-HRESULT CLoadedExtension::GetExtension(OUT IScreenshotEditorExtension **ppExt)
+HRESULT CExtensionContext::GetExtension(OUT IScreenshotEditorExtension **ppExt)
 {
     if (!ppExt)
         return E_POINTER;
@@ -61,7 +61,9 @@ HRESULT CExtensionManager::LoadAllExtensionsFromFolder(const TCHAR *pszFolder)
 
     if (hFile == INVALID_HANDLE_VALUE)
     {
-        return E_HANDLE;
+        // This means that we don't have a file matching the pattern, which we don't want to report
+        // as an error.
+        return S_OK;
     }
 
     HRESULT hrLoad = E_FAIL;
@@ -91,7 +93,7 @@ HRESULT CExtensionManager::LoadAllExtensionsFromFolder(const TCHAR *pszFolder)
 
 HRESULT CExtensionManager::LoadExtension(const TCHAR *pszPath)
 {
-    CLoadedExtension le;
+    CExtensionContext le;
 
     DBGPRINT(TEXT("Loading \"%s\""), pszPath);
 
@@ -167,7 +169,7 @@ HRESULT CExtensionManager::IterateExtensions(OUT CExtensionIterator **ppLoadedEx
 // CExtensionIterator
 //
 
-HRESULT CExtensionIterator::Get(OUT CLoadedExtension **ppExt)
+HRESULT CExtensionIterator::Get(OUT CExtensionContext **ppExt)
 {
     if (!ppExt)
         return E_POINTER;
@@ -184,7 +186,7 @@ HRESULT CExtensionIterator::Get(OUT CLoadedExtension **ppExt)
     return S_OK;
 }
 
-HRESULT CExtensionIterator::GetNext(OUT CLoadedExtension **ppExt)
+HRESULT CExtensionIterator::GetNext(OUT CExtensionContext **ppExt)
 {
     if (!ppExt)
         return E_POINTER;

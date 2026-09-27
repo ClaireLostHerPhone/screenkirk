@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "dynarray.h"
 
-class CLoadedExtension
+class CExtensionContext
 {
 public:
     HMODULE _hmod;
@@ -13,11 +13,11 @@ public:
     const TCHAR *_pszAuthor;
     HRESULT _hr;
 
-    CLoadedExtension()
+    CExtensionContext()
     {
     }
 
-    CLoadedExtension(const CLoadedExtension &rOther)
+    CExtensionContext(const CExtensionContext &rOther)
         : _hmod(rOther._hmod)
         , _pExt(rOther._pExt)
         , _pszName(rOther._pszName)
@@ -55,13 +55,13 @@ public:
         delete this;
     }
 
-    HRESULT Get(OUT CLoadedExtension **ppExt);
-    HRESULT GetNext(OUT CLoadedExtension **ppExt);
+    HRESULT Get(OUT CExtensionContext **ppExt);
+    HRESULT GetNext(OUT CExtensionContext **ppExt);
 };
 
 class CExtensionManager
 {
-    CDynamicArray<CLoadedExtension> _vLoadedExts;
+    CDynamicArray<CExtensionContext> _vLoadedExts;
 
 public:
     static HRESULT CreateInstance();

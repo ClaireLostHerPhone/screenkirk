@@ -446,10 +446,10 @@ HRESULT CEditorFloatingToolbar::SelectOrdinalTool(int idx)
 
 HRESULT CEditorFloatingToolbar::OnToolChanged(ScreenshotEditorTool toolNew)
 {
-    assert(SUCCEEDED(_UnselectTool()));
+    ASSERT_EXPR(SUCCEEDED(_UnselectTool()));
 
     // If the requested tool has no toolbar item, then this will supposedly fail.
-    assert(SendMessage(_hwndToolbarTools, TB_CHECKBUTTON, toolNew + IDM_TOOLFIRST, TRUE));
+    ASSERT_EXPR(SendMessage(_hwndToolbarTools, TB_CHECKBUTTON, toolNew + IDM_TOOLFIRST, TRUE));
 
     return S_OK;
 }
@@ -567,7 +567,7 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
                 // over the editor framebuffer.
                 if (pRenderObject->_pObj->IsVisualDirty())
                 {
-                    assert(SUCCEEDED(_PaintRenderObjectVisualBuffer(hdc, prcPaint, pRenderObject)));
+                    ASSERT_EXPR(SUCCEEDED(_PaintRenderObjectVisualBuffer(hdc, prcPaint, pRenderObject)));
                 }
             }
 
@@ -734,7 +734,7 @@ HRESULT CScreenshotEditorRendererGDI::RemoveRenderObject(IScreenshotEditorObject
     if (SUCCEEDED(_FindRenderObjectFromInterfaceObject(pObj, &pro, &idxRenderObj)))
     {
         RECT rcVisual = { 0 };
-        assert(SUCCEEDED(pObj->GetVisualRect(&rcVisual)));
+        ASSERT_EXPR(SUCCEEDED(pObj->GetVisualRect(&rcVisual)));
 
         if (pro->_pRendererGdi)
             pro->_pRendererGdi->Release();
@@ -883,8 +883,8 @@ HRESULT CScreenshotEditorRendererGDI::_PaintRenderObjectVisualBuffer(HDC hdcRend
 
                     SetViewportOrgEx(hdcLayer, rcVisual.left, rcVisual.top, nullptr);
 
-                    assert(SUCCEEDED(pRenderObject->_pRendererGdi->SetGdiParameters(hdcLayer, prcPaint)));
-                    assert(SUCCEEDED(pRenderObject->_pRendererGdi->Paint()));
+                    ASSERT_EXPR(SUCCEEDED(pRenderObject->_pRendererGdi->SetGdiParameters(hdcLayer, prcPaint)));
+                    ASSERT_EXPR(SUCCEEDED(pRenderObject->_pRendererGdi->Paint()));
 
                     SelectObject(hdcLayer, hObjOld);
                 }
@@ -1052,70 +1052,7 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
     {
         case WM_CREATE:
         {
-            _pScreenshotCtx = (CScreenshotContext *)(((CREATESTRUCT *)lParam)->lpCreateParams);
-            _pRenderer = new CScreenshotEditorRendererGDI(_pScreenshotCtx, hwnd);
-            if (FAILED(_pRenderer->Initialize()))
-            {
-                MessageBox(nullptr, TEXT("Failed to create renderer."), TEXT("Error"), MB_OK | MB_ICONERROR);
-                return -1;
-            }
-            _ChangeTool(SSET_SELECT);
-            SetWindowPos(_hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED);
-
-            // Preliminary extension tool loader:
-            CExtensionIterator *pExtIterator = nullptr;
-            CLoadedExtension *pLoadedExt = nullptr;
-            CExtensionManager::GetInstance()->IterateExtensions(&pExtIterator);
-
-            DBGPRINT(TEXT("Loading extension tools..."));
-            if (SUCCEEDED(pExtIterator->Get(&pLoadedExt)))
-            {
-                do
-                {
-                    IScreenshotEditorExtension *pExt = nullptr;
-                    if (SUCCEEDED(pLoadedExt->GetExtension(&pExt)))
-                    {
-                        const CLSID *rgclsid = nullptr;
-                        int cclsid = 0;
-
-                        if (SUCCEEDED(pExt->GetToolSet(&rgclsid, &cclsid)))
-                        {
-                            for (int i = 0; i < cclsid; i++)
-                            {
-                                IScreenshotEditorTool *pTool = nullptr;
-                                if (SUCCEEDED(pExt->CreateTool(rgclsid[i], &pTool)))
-                                {
-                                    ExtensionToolInfo eti = { 0 };
-                                    eti.idTool = SSET_EXTENSIONFIRST + _vExtToolInfo.GetSize(); // Last member's index + 1
-                                    assert(SUCCEEDED(pTool->GetToolName(&eti.pszToolName)));
-                                    eti.pTool = pTool;
-                                    DBGPRINT(TEXT("Created tool \"%s\" (" PRINT_GUID_PATTERN ") from extension \"%s\""),
-                                        eti.pszToolName,
-                                        PRINT_GUID_PARAMS(rgclsid[i]),
-                                        pLoadedExt->_pszName ? pLoadedExt->_pszName : pLoadedExt->_pszDllName);
-                                    _vExtToolInfo.Push(std::move(eti));
-                                }
-                                else
-                                {
-                                    DBGPRINT(TEXT("Failed to create tool " PRINT_GUID_PATTERN " from extension \"%s\""),
-                                        PRINT_GUID_PARAMS(rgclsid[i]),
-                                        pLoadedExt->_pszName ? pLoadedExt->_pszName : pLoadedExt->_pszDllName);
-                                }
-                            }
-                        }
-                        else
-                        {
-                            DBGPRINT(TEXT("Failed to get tool set from extension \"%s\""),
-                                pLoadedExt->_pszName ? pLoadedExt->_pszName : pLoadedExt->_pszDllName);
-                        }
-                    }
-                    else
-                    {
-                        DBGPRINT(TEXT("Failed to get extension from CLoadedExtension."));
-                    }
-                }
-                while (SUCCEEDED(pExtIterator->GetNext(&pLoadedExt)));
-            }
+            return _OnCreate((CREATESTRUCT *)lParam);
 
             break;
         }
@@ -1219,6 +1156,23 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
     }
 
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
+}
+
+LRESULT CScreenshotEditorWindow::_OnCreate(CREATESTRUCT *pCs)
+{
+    ASSERT_EXPR(_pScreenshotCtx = (CScreenshotContext *)pCs->lpCreateParams);
+    ASSERT_EXPR(_pRenderer = new CScreenshotEditorRendererGDI(_pScreenshotCtx, _hwnd));
+    if (FAILED(_pRenderer->Initialize()))
+    {
+        MessageBox(nullptr, TEXT("Failed to create renderer."), TEXT("Error"), MB_OK | MB_ICONERROR);
+        return -1;
+    }
+    _ChangeTool(SSET_SELECT);
+    SetWindowPos(_hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED);
+
+    ASSERT_EXPR(SUCCEEDED(_LoadExtensionTools()));
+
+    return DefWindowProc(_hwnd, WM_CREATE, 0, (LPARAM)pCs);
 }
 
 LRESULT CScreenshotEditorWindow::_OnDestroy()
@@ -1522,6 +1476,70 @@ LRESULT CScreenshotEditorWindow::_OnMouseRButtonUp(int x, int y, WPARAM flags)
     }
 
     return 0;
+}
+
+HRESULT CScreenshotEditorWindow::_LoadExtensionTools()
+{
+    CExtensionIterator *pExtIterator = nullptr;
+    if (SUCCEEDED(CExtensionManager::GetInstance()->IterateExtensions(&pExtIterator)))
+    {
+        DBGPRINT(TEXT("Loading extension tools..."));
+        CExtensionContext *pLoadedExt = nullptr;
+        if (SUCCEEDED(pExtIterator->Get(&pLoadedExt)))
+        {
+            do
+            {
+                IScreenshotEditorExtension *pExt = nullptr;
+                if (SUCCEEDED(pLoadedExt->GetExtension(&pExt)))
+                {
+                    const CLSID *rgclsid = nullptr;
+                    int cclsid = 0;
+
+                    if (SUCCEEDED(pExt->GetToolSet(&rgclsid, &cclsid)))
+                    {
+                        for (int i = 0; i < cclsid; i++)
+                        {
+                            IScreenshotEditorTool *pTool = nullptr;
+                            if (SUCCEEDED(pExt->CreateTool(rgclsid[i], &pTool)))
+                            {
+                                ExtensionToolInfo eti = { 0 };
+                                eti.idTool = SSET_EXTENSIONFIRST + _vExtToolInfo.GetSize(); // Last member's index + 1
+                                ASSERT_EXPR(SUCCEEDED(pTool->GetToolName(&eti.pszToolName)));
+                                eti.pTool = pTool;
+                                DBGPRINT(TEXT("Created tool \"%s\" (" PRINT_GUID_PATTERN ") from extension \"%s\""),
+                                    eti.pszToolName,
+                                    PRINT_GUID_PARAMS(rgclsid[i]),
+                                    pLoadedExt->_pszName ? pLoadedExt->_pszName : pLoadedExt->_pszDllName);
+                                _vExtToolInfo.Push(std::move(eti));
+                            }
+                            else
+                            {
+                                DBGPRINT(TEXT("Failed to create tool " PRINT_GUID_PATTERN " from extension \"%s\""),
+                                    PRINT_GUID_PARAMS(rgclsid[i]),
+                                    pLoadedExt->_pszName ? pLoadedExt->_pszName : pLoadedExt->_pszDllName);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        DBGPRINT(TEXT("Failed to get tool set from extension \"%s\""),
+                            pLoadedExt->_pszName ? pLoadedExt->_pszName : pLoadedExt->_pszDllName);
+                    }
+                }
+                else
+                {
+                    DBGPRINT(TEXT("Failed to get extension from CExtensionContext."));
+                }
+            }
+            while (SUCCEEDED(pExtIterator->GetNext(&pLoadedExt)));
+        }
+    }
+    else
+    {
+        DBGPRINT(TEXT("Failed to get CExtensionIterator. Will not load extension tools."));
+    }
+
+    return S_OK;
 }
 
 HRESULT CScreenshotEditorWindow::_ChangeTool(ScreenshotEditorTool newTool)

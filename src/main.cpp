@@ -25,12 +25,12 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PTSTR pCmdL
     _tprintf(TEXT("Welcome to codename screenkirk ver. alpha 1.0!\n"));
 #endif
 
-    assert(SUCCEEDED(CExtensionManager::CreateInstance()));
+    ASSERT_EXPR(SUCCEEDED(CExtensionManager::CreateInstance()));
     TCHAR szFolderRoot[MAX_PATH];
     GetModuleFileName(g_hinst, szFolderRoot, ARRAYSIZE(szFolderRoot));
     PathPopFileName(szFolderRoot);
     PathAppend(szFolderRoot, TEXT("extensions"));
-    assert(SUCCEEDED(CExtensionManager::GetInstance()->LoadAllExtensionsFromFolder(szFolderRoot)));
+    ASSERT_EXPR(SUCCEEDED(CExtensionManager::GetInstance()->LoadAllExtensionsFromFolder(szFolderRoot)));
 
     CNotifyWindow *pNotifyWindow = CNotifyWindow::Create();
 

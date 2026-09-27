@@ -188,6 +188,7 @@ protected:
     }
 
     LRESULT v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override;
+    LRESULT _OnCreate(CREATESTRUCT *pCs);
     LRESULT _OnDestroy();
     LRESULT _OnKeyDown(WPARAM virtualKey, LPARAM lParam);
     LRESULT _OnMouseMove(int x, int y, WPARAM flags);
@@ -195,6 +196,8 @@ protected:
     LRESULT _OnMouseLButtonUp(int x, int y, WPARAM flags);
     LRESULT _OnMouseRButtonDown(int x, int y, WPARAM flags);
     LRESULT _OnMouseRButtonUp(int x, int y, WPARAM flags);
+
+    HRESULT _LoadExtensionTools();
 
     HRESULT _ChangeTool(ScreenshotEditorTool newTool);
     void _ShowFloatingToolbar();
