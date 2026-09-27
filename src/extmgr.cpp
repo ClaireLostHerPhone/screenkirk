@@ -1,11 +1,12 @@
 #include "pch.h"
 #include "extmgr.h"
+#include "util.h"
 
 using DllGetClassObject_t = decltype(&DllGetClassObject);
 
 CExtensionManager *g_pExtMgrInst = nullptr;
 
-CLoadedExtension::~CLoadedExtension()
+HRESULT CLoadedExtension::UnloadExtension()
 {
     if (_pszName)
         CoTaskMemFree((void *)_pszName);
@@ -16,6 +17,8 @@ CLoadedExtension::~CLoadedExtension()
 
     if (_pExt)
         _pExt->Release();
+
+    return S_OK;
 }
 
 HRESULT CLoadedExtension::GetExtension(OUT IScreenshotEditorExtension **ppExt)
@@ -77,7 +80,7 @@ HRESULT CExtensionManager::LoadAllExtensionsFromFolder(const TCHAR *pszFolder)
 
             DBGPRINT(SUCCEEDED(hrLoad)
                 ? TEXT("Loaded extension \"%s\" successfully.")
-                : TEXT("Failed to load extension \"%s\"."), fd.cFileName);
+                : TEXT("Failed to load extension \"%s\" (%X)."), fd.cFileName, hrLoad);
         }
     }
     while (FindNextFile(hFile, &fd) != FALSE);
@@ -99,20 +102,12 @@ HRESULT CExtensionManager::LoadExtension(const TCHAR *pszPath)
         le._hmod = hmod;
         GetModuleFileName(hmod, le._szDllPath, ARRAYSIZE(le._szDllPath));
 
-        // I forget the standard API to do this, and I'm writing this without an internet connection, so
-        // oh well...
-        for (const TCHAR *c = le._szDllPath; *c; c++)
-        {
-            if (*c == TEXT('\\'))
-            {
-                le._pszDllName = c + 1;
-            }
-        }
+        le._pszDllName = PathFindFileName(le._szDllPath);
 
         DllGetClassObject_t pfnDllGetClassObject = (DllGetClassObject_t)GetProcAddress(hmod, "DllGetClassObject");
         if (!pfnDllGetClassObject)
         {
-            _tprintf(TEXT("[" __FUNCTION__ "] " "Failed to get DllGetClassObject."));
+            DBGPRINT(TEXT("Failed to get DllGetClassObject."));
             FreeLibrary(hmod);
             hr = E_FAIL;
         }

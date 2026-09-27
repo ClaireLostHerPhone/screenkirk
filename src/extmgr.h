@@ -13,7 +13,23 @@ public:
     const TCHAR *_pszAuthor;
     HRESULT _hr;
 
-    ~CLoadedExtension();
+    CLoadedExtension()
+    {
+    }
+
+    CLoadedExtension(const CLoadedExtension &rOther)
+        : _hmod(rOther._hmod)
+        , _pExt(rOther._pExt)
+        , _pszName(rOther._pszName)
+        , _pszVersionStr(rOther._pszVersionStr)
+        , _pszAuthor(rOther._pszAuthor)
+        , _hr(rOther._hr)
+    {
+        _tcscpy_s(_szDllPath, rOther._szDllPath);
+        _pszDllName = &_szDllPath[0] + (rOther._pszDllName - &rOther._szDllPath[0]);
+    }
+
+    HRESULT UnloadExtension();
 
     inline bool IsExtensionAvailable()
     {

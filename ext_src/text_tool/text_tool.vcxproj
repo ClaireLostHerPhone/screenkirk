@@ -76,7 +76,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-	  <ModuleDefintionFile>text_tool.def</ModuleDefintionFile>
+	  <ModuleDefinitionFile>text_tool.def</ModuleDefinitionFile>
     </Link>
 	<Manifest>
       <EnableDPIAwareness>PerMonitorHighDPIAware</EnableDPIAwareness>

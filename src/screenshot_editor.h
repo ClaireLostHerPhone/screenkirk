@@ -69,10 +69,11 @@ public:
     static HRESULT RegisterWindowClass();
 
     /**
-     * 
+     * Creates the floating toolbar.
      */
     static CEditorFloatingToolbar *Create(class CScreenshotEditorWindow *pEditor);
 
+    HRESULT SelectOrdinalTool(int idx);
     HRESULT OnToolChanged(ScreenshotEditorTool toolNew);
 };
 

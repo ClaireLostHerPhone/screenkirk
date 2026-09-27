@@ -65,12 +65,12 @@ STDMETHODIMP CTextEditorTool::GetToolName(OUT const TCHAR **pszOut)
 
 STDMETHODIMP CTextEditorTool::OnKeyDown(int iVirtualKey, LPARAM lParam)
 {
-    return S_OK;
+    return S_FALSE;
 }
 
 STDMETHODIMP CTextEditorTool::OnKeyUp(int iVirtualKey, LPARAM lParam)
 {
-    return S_OK;
+    return S_FALSE;
 }
 
 STDMETHODIMP CTextEditorTool::OnMouseMove(int x, int y, WPARAM flags)

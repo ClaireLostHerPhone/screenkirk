@@ -75,7 +75,7 @@ __declspec(dllexport) extern "C" HRESULT DllGetClassObject(REFCLSID rclsid, REFI
             return E_OUTOFMEMORY;
         HRESULT hr = pFac->QueryInterface(riid, ppv);
         pFac->Release();
-        return SUCCEEDED(hr);
+        return hr;
     }
 
     return CLASS_E_CLASSNOTAVAILABLE;

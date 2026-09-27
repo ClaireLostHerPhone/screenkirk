@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "screenshot_manager.h"
 #include "screenshot_editor.h"
+#include "util.h"
 
 void OnScreenshotKeyPressed()
 {
@@ -77,43 +78,7 @@ HRESULT CScreenshotContext::_EnsureModificationBuffer()
 {
     if (!_hbmModified)
     {
-        HRESULT hr = E_FAIL;
-
-        HDC hdcDesktop = GetDC(HWND_DESKTOP);
-        if (hdcDesktop)
-        {
-            HDC hdcOrig = CreateCompatibleDC(hdcDesktop);
-            HDC hdcCopy = CreateCompatibleDC(hdcDesktop);
-            if (hdcOrig && hdcCopy)
-            {
-                _hbmModified = CreateCompatibleBitmap(hdcDesktop, _sizeDesktop.cx, _sizeDesktop.cy);
-                if (_hbmModified)
-                {
-                    HGDIOBJ hObjOldOrig = SelectObject(hdcOrig, _hbmScreenshot);
-                    HGDIOBJ hObjOld = SelectObject(hdcCopy, _hbmModified);
-
-                    BitBlt(hdcCopy, 0, 0, _sizeDesktop.cx, _sizeDesktop.cy, hdcOrig, 0, 0, SRCCOPY);
-
-                    SelectObject(hdcCopy, hObjOld);
-                    SelectObject(hdcOrig, hObjOldOrig);
-
-                    hr = S_OK;
-                }
-            }
-            if (hdcOrig)
-                DeleteDC(hdcOrig);
-            if (hdcCopy)
-                DeleteDC(hdcCopy);
-            ReleaseDC(HWND_DESKTOP, hdcDesktop);
-        }
-
-        if (FAILED(hr) && _hbmModified)
-        {
-            DeleteObject(_hbmModified);
-            _hbmModified = nullptr;
-        }
-
-        return hr;
+        return CopyBitmap(&_hbmModified, _hbmScreenshot);
     }
 
     return S_FALSE;
@@ -135,57 +100,7 @@ HRESULT CScreenshotContext::Crop(RECT *prcCrop)
         return hr;
     }
 
-    // This is just written from the top of my head, and it probably sucks. Whatever.
-    hr = E_FAIL;
-
-    HDC hdcDesktop = GetDC(HWND_DESKTOP);
-    HBITMAP hbmNew = nullptr;
-    if (hdcDesktop)
-    {
-        HDC hdcOrig = CreateCompatibleDC(hdcDesktop);
-        HDC hdcCopy = CreateCompatibleDC(hdcDesktop);
-        if (hdcOrig && hdcCopy)
-        {
-            hbmNew = CreateCompatibleBitmap(hdcDesktop, RECTWIDTH(*prcCrop), RECTHEIGHT(*prcCrop));
-            if (hbmNew)
-            {
-                HGDIOBJ hObjOldOrig = SelectObject(hdcOrig, _hbmModified);
-                HGDIOBJ hObjOld = SelectObject(hdcCopy, hbmNew);
-
-                BitBlt(hdcCopy, 0, 0, RECTWIDTH(*prcCrop), RECTHEIGHT(*prcCrop), hdcOrig, prcCrop->left, prcCrop->top, SRCCOPY);
-
-                SelectObject(hdcCopy, hObjOld);
-                SelectObject(hdcOrig, hObjOldOrig);
-
-                hr = S_OK;
-            }
-        }
-        if (hdcOrig)
-            DeleteDC(hdcOrig);
-        if (hdcCopy)
-            DeleteDC(hdcCopy);
-        ReleaseDC(HWND_DESKTOP, hdcDesktop);
-    }
-
-    if (hbmNew)
-    {
-        if (SUCCEEDED(hr))
-        {
-            DeleteObject(_hbmModified);
-            _hbmModified = hbmNew;
-        }
-        else
-        {
-            DeleteObject(hbmNew);
-            hr = E_FAIL;
-        }
-    }
-    else
-    {
-        hr = E_FAIL;
-    }
-
-    return hr;
+    return CopyBitmap(&_hbmModified, _hbmModified, prcCrop);
 }
 
 HRESULT CScreenshotContext::CopyToClipboard()
