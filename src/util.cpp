@@ -2,6 +2,65 @@
 #include "util.h"
 
 //
+// Operating system detection
+//
+
+OSVersion g_osVersion = { 0 };
+OSVersion *GetOSVersion()
+{
+    if (g_osVersion.dwMajorVersion != 0)
+        return &g_osVersion;
+
+#ifndef _WIN16
+    typedef struct _RTL_OSVERSIONINFOW {
+        ULONG dwOSVersionInfoSize;
+        ULONG dwMajorVersion;
+        ULONG dwMinorVersion;
+        ULONG dwBuildNumber;
+        ULONG dwPlatformId;
+        WCHAR szCSDVersion[128];
+    } RTL_OSVERSIONINFOW;
+
+    // RtlGetVersion is available since 5.0. If it is available, then the OS is guaranteed to be
+    // NT.
+    typedef LONG (*RtlGetVersion_t)(RTL_OSVERSIONINFOW *lpVersionInformation);
+    RtlGetVersion_t pfnRtlGetVersion = nullptr;
+    HMODULE hmNtdll = GetModuleHandle(TEXT("ntdll.dll"));
+    if (hmNtdll && (pfnRtlGetVersion = (RtlGetVersion_t)GetProcAddress(hmNtdll, "RtlGetVersion")))
+    {
+        RTL_OSVERSIONINFOW ovi = { sizeof(ovi) };
+        if (pfnRtlGetVersion(&ovi) == 0)
+        {
+            g_osVersion.dwMajorVersion = ovi.dwMajorVersion;
+            g_osVersion.dwMinorVersion = ovi.dwMinorVersion;
+            g_osVersion.dwBuildNumber = ovi.dwBuildNumber;
+#ifndef _UNICODE
+            g_osVersion.fIsNt = true;
+#endif
+            return &g_osVersion;
+        }
+    }
+#endif
+
+#pragma warning(push)
+#pragma warning(disable : 4996) // Disable deprecation warning when using Windows 8 or higher SDKs.
+    OSVERSIONINFO osvi = { sizeof(osvi) };
+    if (GetVersionEx(&osvi))
+    {
+        g_osVersion.dwMajorVersion = osvi.dwMajorVersion;
+        g_osVersion.dwMinorVersion = osvi.dwMinorVersion;
+        g_osVersion.dwBuildNumber = osvi.dwBuildNumber;
+#ifndef _UNICODE
+        g_osVersion.fIsNt = osvi.dwPlatformId == VER_PLATFORM_WIN32_NT;
+#endif
+        return &g_osVersion;
+    }
+#pragma warning(pop)
+
+    return nullptr;
+}
+
+//
 // Path handling
 //
 

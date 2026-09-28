@@ -10,6 +10,22 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PTSTR pCmdL
 {
     g_hinst = hInstance;
 
+    HANDLE hInstMutex = CreateMutex(nullptr, FALSE, TEXT("Local\\screenkirk_InstanceMutex"));
+
+    if (!hInstMutex)
+    {
+        return 1;
+    }
+
+    if (GetLastError() == ERROR_ALREADY_EXISTS)
+    {
+        MessageBox(nullptr, TEXT("An instance of screenkirk is already running. A new instance will not be opened."),
+            TEXT("screenkirk"), MB_OK | MB_ICONERROR);
+
+        CloseHandle(hInstMutex);
+        return 0;
+    }
+
 #ifdef _DEBUG
     AllocConsole();
 
@@ -23,6 +39,13 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PTSTR pCmdL
     freopen_s(&fpIn, "CONIN$", "r", stdin);
 
     _tprintf(TEXT("Welcome to codename screenkirk ver. alpha 1.0!\n"));
+
+    OSVersion *posv = GetOSVersion();
+    _tprintf(
+        TEXT("Running on %s %d.%d (build %d)\n"),
+        posv->IsWindowsNT() ? TEXT("Windows NT") : TEXT("Windows"),
+        posv->dwMajorVersion, posv->dwMinorVersion, posv->dwBuildNumber
+    );
 #endif
 
     ASSERT_EXPR(SUCCEEDED(CExtensionManager::CreateInstance()));
@@ -32,7 +55,9 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PTSTR pCmdL
     PathAppend(szFolderRoot, TEXT("extensions"));
     ASSERT_EXPR(SUCCEEDED(CExtensionManager::GetInstance()->LoadAllExtensionsFromFolder(szFolderRoot)));
 
+#ifndef _WIN16
     CNotifyWindow *pNotifyWindow = CNotifyWindow::Create();
+#endif
 
     // TODO: Support loading a hotkey from user configuration.
     RegisterHotKey(nullptr, ID_HOTKEY_SCREENSHOT, MOD_SHIFT | MOD_WIN, 'S');
@@ -51,8 +76,12 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PTSTR pCmdL
         }
     }
 
+#ifndef _WIN16
     // Destroy the notification tray icon:
-    DestroyWindow(pNotifyWindow->GetHWND());
+    if (pNotifyWindow)
+        DestroyWindow(pNotifyWindow->GetHWND());
+#endif
 
+    CloseHandle(hInstMutex);
     return 0;
 }

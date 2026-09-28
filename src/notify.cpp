@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "notify.h"
 #include "resource.h"
+#include "util.h"
 #include <shellapi.h>
 
 LRESULT CNotifyWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -129,6 +130,13 @@ HRESULT CNotifyWindow::RegisterWindowClass()
 // static
 CNotifyWindow *CNotifyWindow::Create()
 {
+    // Windows 3.x-series operating systems don't have a taskbar or support notification
+    // tray items.
+    if (GetOSVersion()->dwMajorVersion <= 3)
+    {
+        return nullptr;
+    }
+
     RegisterWindowClass();
 
     CNotifyWindow *pWnd = CWindow::Create(

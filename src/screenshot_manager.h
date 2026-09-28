@@ -66,6 +66,7 @@ public:
 
     HRESULT Crop(RECT *prcCrop);
     HRESULT CopyToClipboard();
+    HRESULT SaveToFile();
 
     //@Begin IScreenshotContext
     STDMETHODIMP_(HBITMAP) GetScreenshotBitmap() override

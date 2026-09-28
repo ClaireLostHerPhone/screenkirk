@@ -332,8 +332,13 @@ LRESULT CEditorFloatingToolbar::_OnCommand(WPARAM wParam, LPARAM lParam)
             break;
         }
 
-        case IDM_OPENINEXTERNALEDITOR:
         case IDM_SAVE:
+        {
+            SendMessage(hwndEditor, CScreenshotEditorWindow::WM_SSE_SAVEIMAGE, 0, 0);
+            break;
+        }
+
+        case IDM_OPENINEXTERNALEDITOR:
         {
             MessageBox(hwndEditor, TEXT("This operation has yet to be implemented."), TEXT("Unimplemented!"), MB_OK | MB_ICONERROR);
             break;
@@ -1053,8 +1058,6 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
         case WM_CREATE:
         {
             return _OnCreate((CREATESTRUCT *)lParam);
-
-            break;
         }
 
         case WM_DESTROY:
@@ -1151,6 +1154,14 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
         case WM_SSE_COPYTOCLIPBOARD:
         {
             CopyToClipboardAndAccept();
+            return 0;
+        }
+
+        case WM_SSE_SAVEIMAGE:
+        {
+            // TEMPORARY -- There will need to be a restructuring of the code from
+            // CopyToClipboardAndAccept for this to really work out nicely.
+            _pScreenshotCtx->SaveToFile();
             return 0;
         }
     }

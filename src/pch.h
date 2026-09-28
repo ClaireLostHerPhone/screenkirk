@@ -31,6 +31,23 @@
 #define RECTWIDTH(rc) ((rc).right - (rc).left)
 #define RECTHEIGHT(rc) ((rc).bottom - (rc).top)
 
+#ifdef _WIN16
+#define CoTaskMemAlloc(x)   (malloc(x))
+#define CoTaskMemFree(x)    (free(x))
+#define CoTaskMemRealloc(x) (realloc(x))
+#endif
+
+#ifdef _UNICODE
+#define _AW(x) x##W
+#define _AWSTR "W"
+#else
+#define _AW(x) x##A
+#define _AWSTR "A"
+#endif
+
+#define TOK_CAT_INNER(a, b) a##b
+#define TOK_CAT(a, b) TOK_CAT_INNER(a, b)
+
 #define ID_HOTKEY_SCREENSHOT (20)
 
 extern HINSTANCE g_hinst;

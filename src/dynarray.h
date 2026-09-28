@@ -59,6 +59,23 @@ public:
         return _v.operator[](position);
     }
 
+    inline HRESULT Clear()
+    {
+        try
+        {
+            _v.clear();
+            return S_OK;
+        }
+        catch (std::bad_alloc ex)
+        {
+            return E_OUTOFMEMORY;
+        }
+        catch (...)
+        {
+            return E_FAIL;
+        }
+    }
+
     inline HRESULT Push(const TContained &scalar)
     {
         try

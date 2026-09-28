@@ -29,7 +29,7 @@ BEGIN
             VALUE "FileDescription",  "Text Tool for screenkirk"
             VALUE "FileVersion",      VER_FILEVERSION_STR
             VALUE "InternalName",     "text_tool"
-            VALUE "LegalCopyright",   "Copyright © 2026, ClaireLostHerPhone. Licensed under GNU General Public License version 3.0."
+            VALUE "LegalCopyright",   "Copyright © 2026, Claire Clancy. Licensed under GNU General Public License version 3.0."
             VALUE "LegalTrademarks1", ""
             VALUE "LegalTrademarks2", ""
             VALUE "OriginalFilename", "text_tool.dll"

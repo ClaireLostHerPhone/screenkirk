@@ -221,6 +221,7 @@ public:
         WM_SSE_GETWINDOWPOSITIONS = WM_APP + 1,
         WM_SSE_CHANGETOOL,
         WM_SSE_COPYTOCLIPBOARD,
+        WM_SSE_SAVEIMAGE,
     };
 
     //@Begin IUnknown
