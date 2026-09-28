@@ -88,7 +88,10 @@ class CSaveImage
         TCHAR szExtensions[MAX_PATH]; // Comma-separated list of extensions.
         union
         {
+            // When the time comes, this will need to be freed when this fucker is
+            // killed.
             IScreenshotEditorExtension *pOwnerExtension;
+
             GUID guidWicContainerFormat;
         } providerData;
     };
@@ -96,6 +99,10 @@ class CSaveImage
     struct SupportedExtension
     {
         TCHAR szExtension[64];
+
+        // I think there's an, albeit unlikely, possibility for this pointer to be
+        // moved since it is in the dynamic array.
+        // TODO: Move to offset.
         CDynamicArray<CodecInfo *> vpProviders;
     };
     
@@ -133,6 +140,8 @@ public:
     {
     }
 
+    ~CSaveImage();
+
     HRESULT Initialize();
     HRESULT OpenSaveDialog();
     inline bool IsWicAvailable()
@@ -147,6 +156,12 @@ public:
 
     HRESULT FetchSupportedCodecs();
 };
+
+CSaveImage::~CSaveImage()
+{
+    if (_pWicFactory)
+        _pWicFactory->Release();
+}
 
 HRESULT CSaveImage::Initialize()
 {
@@ -215,6 +230,7 @@ HRESULT CSaveImage::OpenSaveDialog()
     HANDLE hf = CreateFile(szFileName, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (hf == INVALID_HANDLE_VALUE)
     {
+        // TODO: This path leaks!
         return E_FAIL;
     }
 
