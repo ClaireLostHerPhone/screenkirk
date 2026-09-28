@@ -55,9 +55,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PTSTR pCmdL
     PathAppend(szFolderRoot, TEXT("extensions"));
     ASSERT_EXPR(SUCCEEDED(CExtensionManager::GetInstance()->LoadAllExtensionsFromFolder(szFolderRoot)));
 
-#ifndef _WIN16
     CNotifyWindow *pNotifyWindow = CNotifyWindow::Create();
-#endif
 
     // TODO: Support loading a hotkey from user configuration.
     RegisterHotKey(nullptr, ID_HOTKEY_SCREENSHOT, MOD_SHIFT | MOD_WIN, 'S');
@@ -76,11 +74,9 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PTSTR pCmdL
         }
     }
 
-#ifndef _WIN16
     // Destroy the notification tray icon:
     if (pNotifyWindow)
         DestroyWindow(pNotifyWindow->GetHWND());
-#endif
 
     CloseHandle(hInstMutex);
     return 0;

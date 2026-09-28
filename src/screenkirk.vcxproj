@@ -28,10 +28,10 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   
   <PropertyGroup Label="Configuration">
-	<ConfigurationType>Application</ConfigurationType>
-	<PlatformToolset>v143</PlatformToolset>
-	<CharacterSet>Unicode</CharacterSet>
-	<OutDir>$(SolutionDir)\bin\$(MSBuildProjectName)-$(Platform)-$(Configuration)\</OutDir>
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v141_xp</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <OutDir>$(SolutionDir)\bin\$(MSBuildProjectName)-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)\obj\$(MSBuildProjectName)-$(Platform)-$(Configuration)\</IntDir>
   </PropertyGroup>
   
@@ -65,7 +65,7 @@
   
   <ItemDefinitionGroup>
     <ClCompile>
-	  <AdditionalIncludeDirectories>../include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+	    <AdditionalIncludeDirectories>../include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -93,12 +93,16 @@
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
     <ClCompile>
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <!-- Static CRT is used for easy portability. -->
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
   </ItemDefinitionGroup>
   
   <ItemDefinitionGroup Condition="'$(Configuration)'!='Debug'">
     <ClCompile>
       <PreprocessorDefinitions>_NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <!-- Static CRT is used for easy portability. -->
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
   </ItemDefinitionGroup>
   
@@ -110,9 +114,9 @@
   </ItemDefinitionGroup>
   
   <ItemGroup>
-	<ClCompile Include="pch.cpp">
-		<PrecompiledHeader>Create</PrecompiledHeader>
-	</ClCompile>
+    <ClCompile Include="pch.cpp">
+      <PrecompiledHeader>Create</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="*.cpp" Exclude="pch.cpp" />
   </ItemGroup>
   <ItemGroup>

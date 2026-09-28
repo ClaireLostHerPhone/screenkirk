@@ -23,7 +23,7 @@ OSVersion *GetOSVersion()
 
     // RtlGetVersion is available since 5.0. If it is available, then the OS is guaranteed to be
     // NT.
-    typedef LONG (*RtlGetVersion_t)(RTL_OSVERSIONINFOW *lpVersionInformation);
+    typedef LONG (WINAPI *RtlGetVersion_t)(RTL_OSVERSIONINFOW *lpVersionInformation);
     RtlGetVersion_t pfnRtlGetVersion = nullptr;
     HMODULE hmNtdll = GetModuleHandle(TEXT("ntdll.dll"));
     if (hmNtdll && (pfnRtlGetVersion = (RtlGetVersion_t)GetProcAddress(hmNtdll, "RtlGetVersion")))

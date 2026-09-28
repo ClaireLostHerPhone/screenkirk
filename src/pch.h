@@ -2,8 +2,14 @@
 
 #define NOMINMAX
 #include <windows.h>
+#include <unknwn.h>
+#include <objbase.h>
 #include <tchar.h>
 #include "screenkirk.h"
+
+#ifndef E_BOUNDS
+#define E_BOUNDS ((HRESULT)0x8000000BL)
+#endif
 
 #ifdef _DEBUG
 #define DBGPRINT(...)                                                                    \
