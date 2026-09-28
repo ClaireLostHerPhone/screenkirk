@@ -1159,9 +1159,7 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
 
         case WM_SSE_SAVEIMAGE:
         {
-            // TEMPORARY -- There will need to be a restructuring of the code from
-            // CopyToClipboardAndAccept for this to really work out nicely.
-            _pScreenshotCtx->SaveToFile();
+            SaveImageToFileAndAccept();
             return 0;
         }
     }
@@ -1487,6 +1485,23 @@ LRESULT CScreenshotEditorWindow::_OnMouseRButtonUp(int x, int y, WPARAM flags)
     }
 
     return 0;
+}
+
+HRESULT CScreenshotEditorWindow::_ApplyCrop()
+{
+    if (!_fHasAnySelectionMade)
+    {
+        _rcSelection = { 0, 0, _pScreenshotCtx->_sizeDesktop.cx, _pScreenshotCtx->_sizeDesktop.cy };
+    }
+
+    if (SUCCEEDED(_pScreenshotCtx->Crop(&_rcSelection)))
+    {
+        return S_OK;
+    }
+    else
+    {
+        return E_FAIL;
+    }
 }
 
 HRESULT CScreenshotEditorWindow::_LoadExtensionTools()
@@ -1816,12 +1831,7 @@ STDMETHODIMP CScreenshotEditorWindow::GetScreenshotContext(OUT IScreenshotContex
 
 HRESULT CScreenshotEditorWindow::CopyToClipboardAndAccept()
 {
-    if (!_fHasAnySelectionMade)
-    {
-        _rcSelection = { 0, 0, _pScreenshotCtx->_sizeDesktop.cx, _pScreenshotCtx->_sizeDesktop.cy };
-    }
-
-    if (SUCCEEDED(_pScreenshotCtx->Crop(&_rcSelection)))
+    if (SUCCEEDED(_ApplyCrop()))
     {
         if (SUCCEEDED(_pScreenshotCtx->CopyToClipboard()))
         {
@@ -1830,6 +1840,29 @@ HRESULT CScreenshotEditorWindow::CopyToClipboardAndAccept()
         else
         {
             MessageBox(_hwnd, TEXT("Failed to copy image to clipboard."), TEXT("Error"), MB_OK | MB_ICONERROR);
+            return E_FAIL;
+        }
+    }
+    else
+    {
+        MessageBox(_hwnd, TEXT("Failed to crop image."), TEXT("Error"), MB_OK | MB_ICONERROR);
+        return E_FAIL;
+    }
+
+    return S_OK;
+}
+
+HRESULT CScreenshotEditorWindow::SaveImageToFileAndAccept()
+{
+    if (SUCCEEDED(_ApplyCrop()))
+    {
+        if (SUCCEEDED(_pScreenshotCtx->SaveToFile()))
+        {
+            DestroyWindow(_hwnd);
+        }
+        else
+        {
+            MessageBox(_hwnd, TEXT("Failed to save image to file."), TEXT("Error"), MB_OK | MB_ICONERROR);
             return E_FAIL;
         }
     }

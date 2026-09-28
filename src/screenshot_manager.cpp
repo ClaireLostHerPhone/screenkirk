@@ -86,21 +86,26 @@ class CSaveImage
         CodecProvider provider;
         TCHAR szName[MAX_PATH];
         TCHAR szExtensions[MAX_PATH]; // Comma-separated list of extensions.
-        IScreenshotEditorExtension *pOwnerExtension;
-    };
-    
-    struct FilterItem
-    {
-        TCHAR szDisplayName[MAX_PATH];
-        TCHAR szExtensions[MAX_PATH];
+        union
+        {
+            IScreenshotEditorExtension *pOwnerExtension;
+            GUID guidWicContainerFormat;
+        } providerData;
     };
 
     struct SupportedExtension
     {
         TCHAR szExtension[64];
-        CDynamicArray<CodecInfo *> _vpProviders;
+        CDynamicArray<CodecInfo *> vpProviders;
+    };
+    
+    struct FilterItem
+    {
+        TCHAR szDisplayName[MAX_PATH];
+        SupportedExtension extension;
     };
 
+    HBITMAP _hbm;
     CDynamicArray<CodecInfo> _vCodecInfo;
 
 #ifdef _UNICODE
@@ -115,10 +120,16 @@ class CSaveImage
 
     HRESULT _GetFileTypeName(const TCHAR *pszExtension, TCHAR *pszOut, int cch);
     HRESULT _GetLocalizedAllFilesString(TCHAR *pszOut, int cch);
+
     HRESULT _FetchWicCodecs();
 
+    HRESULT _EncodeImage(char **ppcData, int *pcbData, const TCHAR *pszExtension, FilterItem *pfi);
+    HRESULT _EncodeBitmap(char **ppcData, int *pcbData);
+    HRESULT _EncodeWIC(GUID *pEncoderGuid, char **ppcData, int *pcbData);
+
 public:
-    CSaveImage()
+    CSaveImage(HBITMAP hbm)
+        : _hbm(hbm)
     {
     }
 
@@ -191,6 +202,29 @@ HRESULT CSaveImage::OpenSaveDialog()
 
     delete[] pszFilter;
 
+    FilterItem *pSelectedFilterItem = &vFilterItems.At(ofn.nFilterIndex - 1);
+
+    const WCHAR *pszExtension = PathFindFileExtension(szFileName);
+    char *pcData = nullptr;
+    int cbData = 0;
+    if (FAILED(_EncodeImage(&pcData, &cbData, pszExtension, pSelectedFilterItem)))
+    {
+        return E_FAIL;
+    }
+
+    HANDLE hf = CreateFile(szFileName, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (hf == INVALID_HANDLE_VALUE)
+    {
+        return E_FAIL;
+    }
+
+    DWORD dwBytesWritten = 0;
+    WriteFile(hf, pcData, cbData, &dwBytesWritten, nullptr);
+
+    delete[] pcData;
+
+    CloseHandle(hf);
+
     return S_OK;
 }
 
@@ -232,7 +266,7 @@ HRESULT CSaveImage::_GetFilterExtensions(CDynamicArray<SupportedExtension> *pvse
                 if (_tcscmp(se.szExtension, pszToken) == 0)
                 {
                     // Then add this provider to the existing supported extension.
-                    se._vpProviders.Push(&ci);
+                    se.vpProviders.Push(&ci);
                     fHandled = true;
                 }
             }
@@ -242,7 +276,7 @@ HRESULT CSaveImage::_GetFilterExtensions(CDynamicArray<SupportedExtension> *pvse
             {
                 SupportedExtension se = {};
                 _tcscpy_s(se.szExtension, pszToken);
-                se._vpProviders.Push(&ci);
+                se.vpProviders.Push(&ci);
                 pvse->Push(se);
             }
 
@@ -264,16 +298,16 @@ HRESULT CSaveImage::_GetFilterItemList(CDynamicArray<FilterItem> *pvfi)
     for (SupportedExtension &se : vse)
     {
         FilterItem fi = {};
-        _tcscpy_s(fi.szExtensions, se.szExtension);
+        fi.extension = se;
 
         WCHAR szTypeDisplayName[MAX_PATH] = { 0 };
         if (SUCCEEDED(_GetFileTypeName(se.szExtension, szTypeDisplayName, ARRAYSIZE(szTypeDisplayName))))
         {
-            _stprintf_s(fi.szDisplayName, TEXT("%s (%s)"), szTypeDisplayName, fi.szExtensions);
+            _stprintf_s(fi.szDisplayName, TEXT("%s (%s)"), szTypeDisplayName, fi.extension.szExtension);
         }
         else
         {
-            _tcscpy_s(fi.szDisplayName, fi.szExtensions);
+            _tcscpy_s(fi.szDisplayName, fi.extension.szExtension);
         }
 
         pvfi->Push(fi);
@@ -281,7 +315,7 @@ HRESULT CSaveImage::_GetFilterItemList(CDynamicArray<FilterItem> *pvfi)
 
     // All items:
     FilterItem fiAllItems = {};
-    _tcscpy_s(fiAllItems.szExtensions, TEXT("*.*"));
+    _tcscpy_s(fiAllItems.extension.szExtension, TEXT("*.*"));
 
     WCHAR szTypeDisplayName[MAX_PATH] = { 0 };
     if (SUCCEEDED(_GetLocalizedAllFilesString(szTypeDisplayName, ARRAYSIZE(szTypeDisplayName))))
@@ -290,7 +324,7 @@ HRESULT CSaveImage::_GetFilterItemList(CDynamicArray<FilterItem> *pvfi)
     }
     else
     {
-        _tcscpy_s(fiAllItems.szDisplayName, fiAllItems.szExtensions);
+        _tcscpy_s(fiAllItems.szDisplayName, fiAllItems.extension.szExtension);
     }
 
     pvfi->Push(fiAllItems);
@@ -308,7 +342,7 @@ HRESULT CSaveImage::_BuildFilterString(CDynamicArray<FilterItem> *pvfi, TCHAR **
     for (FilterItem &fi : *pvfi)
     {
         cchNeeded += (_tcslen(fi.szDisplayName) + 1);
-        cchNeeded += (_tcslen(fi.szExtensions) + 1);
+        cchNeeded += (_tcslen(fi.extension.szExtension) + 1);
     }
 
     // For the final zero terminator.
@@ -328,7 +362,7 @@ HRESULT CSaveImage::_BuildFilterString(CDynamicArray<FilterItem> *pvfi, TCHAR **
         _tcscpy_s(ppszCur, _tcslen(fi.szDisplayName) + 1, fi.szDisplayName);
         ppszCur += _tcslen(ppszCur) + 1;
 
-        _tcscpy_s(ppszCur, _tcslen(fi.szExtensions) + 1, fi.szExtensions);
+        _tcscpy_s(ppszCur, _tcslen(fi.extension.szExtension) + 1, fi.extension.szExtension);
         ppszCur += _tcslen(ppszCur) + 1;
 
         fIsEmpty = false;
@@ -440,6 +474,7 @@ HRESULT CSaveImage::_FetchWicCodecs()
                 ci.provider = CP_WIC;
                 _tcscpy_s(ci.szName, szFriendlyName);
                 _tcscpy_s(ci.szExtensions, szExtensions);
+                pCodecInfo->GetContainerFormat(&ci.providerData.guidWicContainerFormat);
                 _vCodecInfo.Push(ci);
 
                 DBGPRINT(TEXT("Fetched codec \"%s\" with provided extensions \"%s\""), szFriendlyName, szExtensions);
@@ -451,6 +486,200 @@ HRESULT CSaveImage::_FetchWicCodecs()
         }
 
         pEnum->Release();
+    }
+
+    return hr;
+}
+
+HRESULT CSaveImage::_EncodeImage(char **ppcData, int *pcbData, const TCHAR *pszExtension, FilterItem *pfi)
+{
+    if (!ppcData || !pcbData || !pszExtension || !pfi)
+        return E_POINTER;
+
+    for (CodecInfo *pci : pfi->extension.vpProviders)
+    {
+        if (pci->provider == CP_EXTENSION)
+        {
+            // TODO: Extension API here is not yet planned.
+        }
+        else if (pci->provider == CP_WIC)
+        {
+            return _EncodeWIC(&pci->providerData.guidWicContainerFormat, ppcData, pcbData);
+        }
+        else if (pci->provider == CP_BUILTIN)
+        {
+            // This only supports bmp at the moment.
+            return _EncodeBitmap(ppcData, pcbData);
+        }
+    }
+
+    // There is no good provider for the selected extension.
+    return E_FAIL;
+}
+
+HRESULT CSaveImage::_EncodeBitmap(char **ppcData, int *pcbData)
+{
+    BITMAP bm;
+    if (!GetObject(_hbm, sizeof(bm), &bm))
+    {
+        return E_FAIL;
+    }
+
+    HDC hdc = GetDC(HWND_DESKTOP);
+
+    BITMAPINFOHEADER bih = { sizeof(bih) };
+    bih.biWidth = bm.bmWidth;
+    bih.biHeight = bm.bmHeight;
+    bih.biPlanes = 1;
+    bih.biBitCount = 32;
+    bih.biCompression = BI_RGB;
+    bih.biSizeImage = bm.bmWidth * bm.bmHeight * 4;
+
+    HRESULT hr = E_FAIL;
+    char *pcDIBits = new (std::nothrow) char[bih.biSizeImage];
+    if (pcDIBits)
+    {
+        BITMAPINFO bmi;
+        bmi.bmiHeader = bih;
+        if (GetDIBits(hdc, _hbm, 0, (UINT)bm.bmHeight, pcDIBits, &bmi, DIB_RGB_COLORS))
+        {
+            BITMAPFILEHEADER bfh;
+            bfh.bfType = 0x4D42; // "BM"
+            bfh.bfSize = sizeof(bfh) + sizeof(bih) + bih.biSizeImage;
+            bfh.bfReserved1 = bfh.bfReserved2 = 0;
+            bfh.bfOffBits = sizeof(bfh) + sizeof(bih);
+
+            // Write the data into the data buffer:
+            *ppcData = new char[bfh.bfSize];
+            *pcbData = bfh.bfSize;
+            memcpy_s(*ppcData, bfh.bfSize, &bfh, sizeof(bfh));
+            memcpy_s((*ppcData) + sizeof(bfh), bfh.bfSize - sizeof(bfh), &bih, sizeof(bih));
+            memcpy_s((*ppcData) + sizeof(bfh) + sizeof(bih), bfh.bfSize - sizeof(bfh) - sizeof(bih), pcDIBits, bih.biSizeImage);
+
+            hr = S_OK;
+        }
+
+        delete[] pcDIBits;
+    }
+    ReleaseDC(HWND_DESKTOP, hdc);
+
+    return hr;
+}
+
+// Yes, the function is a horrible pyramid.
+HRESULT CSaveImage::_EncodeWIC(GUID *pEncoderGuid, char **ppcData, int *pcbData)
+{
+    IWICBitmap *pBitmap = nullptr;
+    HRESULT hr = _pWicFactory->CreateBitmapFromHBITMAP(_hbm, nullptr, WICBitmapUseAlpha, &pBitmap);
+    if (SUCCEEDED(hr))
+    {
+        IStream *pMemStream = nullptr;
+        hr = CreateStreamOnHGlobal(nullptr, TRUE, &pMemStream);
+        if (SUCCEEDED(hr))
+        {
+            IWICStream *pStream = nullptr;
+            hr = _pWicFactory->CreateStream(&pStream);
+            if (SUCCEEDED(hr))
+            {
+                hr = pStream->InitializeFromIStream(pMemStream);
+                if (SUCCEEDED(hr))
+                {
+                    IWICBitmapEncoder *pEncoder = nullptr;
+                    hr = _pWicFactory->CreateEncoder(*pEncoderGuid, nullptr, &pEncoder);
+                    if (SUCCEEDED(hr))
+                    {
+                        hr = pEncoder->Initialize(pStream, WICBitmapEncoderNoCache);
+                        if (SUCCEEDED(hr))
+                        {
+                            IWICBitmapFrameEncode *pFrameEncode = nullptr;
+                            IPropertyBag2 *pPropertyBag = nullptr;
+                            hr = pEncoder->CreateNewFrame(&pFrameEncode, &pPropertyBag);
+                            if (SUCCEEDED(hr))
+                            {
+                                hr = pFrameEncode->Initialize(pPropertyBag);
+                                if (SUCCEEDED(hr))
+                                {
+                                    UINT uiWidth = 0;
+                                    UINT uiHeight = 0;
+                                    hr = pBitmap->GetSize(&uiWidth, &uiHeight);
+                                    if (SUCCEEDED(hr))
+                                    {
+                                        hr = pFrameEncode->SetSize(uiWidth, uiHeight);
+                                        if (SUCCEEDED(hr))
+                                        {
+                                            WICPixelFormatGUID formatGuid;
+                                            hr = pBitmap->GetPixelFormat(&formatGuid);
+                                            if (SUCCEEDED(hr))
+                                            {
+                                                hr = pFrameEncode->SetPixelFormat(&formatGuid);
+                                                if (SUCCEEDED(hr))
+                                                {
+                                                    hr = pFrameEncode->WriteSource(pBitmap, nullptr);
+                                                    if (SUCCEEDED(hr))
+                                                    {
+                                                        hr = pFrameEncode->Commit();
+                                                        if (SUCCEEDED(hr))
+                                                        {
+                                                            hr = pEncoder->Commit();
+                                                            if (SUCCEEDED(hr))
+                                                            {
+                                                                HGLOBAL hGlobal = nullptr;
+                                                                hr = GetHGlobalFromStream(pMemStream, &hGlobal);
+                                                                if (SUCCEEDED(hr))
+                                                                {
+                                                                    size_t cbStream = GlobalSize(hGlobal);
+                                                                    if (cbStream > 0)
+                                                                    {
+                                                                        ULARGE_INTEGER streamPos = { 0 };
+                                                                        LARGE_INTEGER zeroSeek = { 0 };
+                                                                        hr = pMemStream->Seek(zeroSeek, STREAM_SEEK_CUR, &streamPos);
+                                                                        if (SUCCEEDED(hr))
+                                                                        {
+                                                                            DWORD cbFinal = (DWORD)streamPos.QuadPart;
+
+                                                                            void *pBytes = GlobalLock(hGlobal);
+                                                                            if (pBytes)
+                                                                            {
+                                                                                char *pcBytes = new (std::nothrow) char[cbFinal];
+                                                                                if (pcBytes)
+                                                                                {
+                                                                                    memcpy_s(pcBytes, cbFinal, pBytes, cbFinal);
+
+                                                                                    *ppcData = pcBytes;
+                                                                                    *pcbData = cbFinal;
+                                                                                }
+                                                                                else
+                                                                                {
+                                                                                    hr = E_OUTOFMEMORY;
+                                                                                }
+                                                                            }
+
+                                                                            GlobalUnlock(hGlobal);
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        pEncoder->Release();
+                    }
+                }
+
+                pStream->Release();
+            }
+
+            pMemStream->Release();
+        }
+
+        pBitmap->Release();
     }
 
     return hr;
@@ -503,14 +732,12 @@ HRESULT CScreenshotContext::CopyToClipboard()
 
 HRESULT CScreenshotContext::SaveToFile()
 {
-    CSaveImage si;
+    CSaveImage si(_hbmModified);
     si.Initialize();
 
     // TEMPORARY -- I just need to get this called somehow so I can analyze
     // shit in real time.
     si.FetchSupportedCodecs();
 
-    si.OpenSaveDialog();
-
-    return S_OK;
+    return si.OpenSaveDialog();
 }

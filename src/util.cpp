@@ -79,6 +79,21 @@ const TCHAR *PathFindFileName(const TCHAR *pszPath)
     return pc;
 }
 
+const TCHAR *PathFindFileExtension(const TCHAR *pszPath)
+{
+    const TCHAR *pc = pszPath;
+
+    for (const TCHAR *c = pszPath; *c; c++)
+    {
+        if (*c == TEXT('.'))
+        {
+            pc = c;
+        }
+    }
+
+    return pc;
+}
+
 HRESULT PathPopFileName(TCHAR *pszPath)
 {
     TCHAR *pszFileName = (TCHAR *)PathFindFileName(pszPath);

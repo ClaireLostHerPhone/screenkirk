@@ -197,6 +197,8 @@ protected:
     LRESULT _OnMouseRButtonDown(int x, int y, WPARAM flags);
     LRESULT _OnMouseRButtonUp(int x, int y, WPARAM flags);
 
+    HRESULT _ApplyCrop();
+
     HRESULT _LoadExtensionTools();
 
     HRESULT _ChangeTool(ScreenshotEditorTool newTool);
@@ -246,6 +248,7 @@ public:
     //@End IScreenshotEditor
 
     HRESULT CopyToClipboardAndAccept();
+    HRESULT SaveImageToFileAndAccept();
     int GetExtensionToolCount();
     HRESULT GetExtensionToolInfo(int idx, OUT ExtensionToolInfo *pExtToolInfo);
 
