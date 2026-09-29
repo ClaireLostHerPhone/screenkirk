@@ -57,8 +57,29 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PTSTR pCmdL
 
     CNotifyWindow *pNotifyWindow = CNotifyWindow::Create();
 
+    if (GetOSVersion()->flags & OSVF_WINE)
+    {
+        MessageBox(
+            nullptr,
+            TEXT("Codename screenkirk cannot automatically register the screenshot shortcut on your platform.\n\n")
+            TEXT("For Linux, I use 'xdotool key --window $(xdotool search class \"screenkirk_*\" | head - n 1) shift+Scroll_Lock'. ")
+            TEXT("However, your mileage may vary."),
+            TEXT("screenkirk"),
+            MB_OK | MB_ICONWARNING
+        );
+    }
+
     // TODO: Support loading a hotkey from user configuration.
-    RegisterHotKey(nullptr, ID_HOTKEY_SCREENSHOT, MOD_SHIFT | MOD_WIN, 'S');
+    if (GetOSVersion()->flags == OSVF_WINNT)
+    {
+        // This does not work on some platforms for some reason.
+        RegisterHotKey(nullptr, ID_HOTKEY_SCREENSHOT, MOD_SHIFT | MOD_WIN, 'S');
+    }
+    else
+    {
+        // This works for now.
+        RegisterHotKey(nullptr, ID_HOTKEY_SCREENSHOT, MOD_SHIFT | MOD_NOREPEAT, VK_SCROLL);
+    }
 
     MSG msg = { 0 };
     while (GetMessage(&msg, nullptr, 0, 0))

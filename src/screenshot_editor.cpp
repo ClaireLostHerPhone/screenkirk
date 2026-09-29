@@ -4,6 +4,7 @@
 #include "resource.h"
 #include <windowsx.h>
 #include <CommCtrl.h>
+#include "util.h"
 #include <assert.h>
 
 //
@@ -422,8 +423,18 @@ CEditorFloatingToolbar *CEditorFloatingToolbar::Create(CScreenshotEditorWindow *
         return nullptr;
     }
 
+    DWORD dwExStyle = WS_EX_PALETTEWINDOW;
+
+    // If running under Linux, the Windows palette window style results in the non-client area
+    // using Wine's clone of the Windows classic theme rather than deferring to the Linux
+    // window manager, which is ugly in my opinion.
+    if (GetOSVersion()->flags & OSVF_WINE)
+    {
+        dwExStyle &= ~WS_EX_PALETTEWINDOW;
+    }
+
     CEditorFloatingToolbar *pWnd = CWindow::Create(
-        WS_EX_PALETTEWINDOW,
+        dwExStyle,
         TEXT("Tools"),
         WS_CAPTION | WS_SYSMENU,
         0, 0,
@@ -1103,37 +1114,42 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
 
         case WM_MOUSEMOVE:
         {
-            int x = GET_X_LPARAM(lParam);
-            int y = GET_Y_LPARAM(lParam);
-            return _OnMouseMove(x, y, wParam);
+            POINT pt;
+            pt.x = GET_X_LPARAM(lParam);
+            pt.y = GET_Y_LPARAM(lParam);
+            return _OnMouseMove(pt.x, pt.y, wParam);
         }
 
         case WM_LBUTTONDOWN:
         {
-            int x = GET_X_LPARAM(lParam);
-            int y = GET_Y_LPARAM(lParam);
-            return _OnMouseLButtonDown(x, y, wParam);
+            POINT pt;
+            pt.x = GET_X_LPARAM(lParam);
+            pt.y = GET_Y_LPARAM(lParam);
+            return _OnMouseLButtonDown(pt.x, pt.y, wParam);
         }
 
         case WM_LBUTTONUP:
         {
-            int x = GET_X_LPARAM(lParam);
-            int y = GET_Y_LPARAM(lParam);
-            return _OnMouseLButtonUp(x, y, wParam);
+            POINT pt;
+            pt.x = GET_X_LPARAM(lParam);
+            pt.y = GET_Y_LPARAM(lParam);
+            return _OnMouseLButtonUp(pt.x, pt.y, wParam);
         }
 
         case WM_RBUTTONDOWN:
         {
-            int x = GET_X_LPARAM(lParam);
-            int y = GET_Y_LPARAM(lParam);
-            return _OnMouseRButtonDown(x, y, wParam);
+            POINT pt;
+            pt.x = GET_X_LPARAM(lParam);
+            pt.y = GET_Y_LPARAM(lParam);
+            return _OnMouseRButtonDown(pt.x, pt.y, wParam);
         }
 
         case WM_RBUTTONUP:
         {
-            int x = GET_X_LPARAM(lParam);
-            int y = GET_Y_LPARAM(lParam);
-            return _OnMouseRButtonUp(x, y, wParam);
+            POINT pt;
+            pt.x = GET_X_LPARAM(lParam);
+            pt.y = GET_Y_LPARAM(lParam);
+            return _OnMouseRButtonUp(pt.x, pt.y, wParam);
         }
 
         case WM_SSE_GETWINDOWPOSITIONS:
@@ -1403,8 +1419,7 @@ LRESULT CScreenshotEditorWindow::_OnMouseLButtonDown(int x, int y, WPARAM flags)
     _fIsSelectingRegion = true;
 
     GetCursorPos(&_ptSelectionOrigin);
-    _ptSelectionOrigin.x -= _pScreenshotCtx->_ptVirtualScreen.x; // Otherwise the offsets are fucked up...
-    _ptSelectionOrigin.y -= _pScreenshotCtx->_ptVirtualScreen.y;
+    ScreenToClient(_hwnd, &_ptSelectionOrigin);
 
     if (_tool == SSET_DRAG)
     {
