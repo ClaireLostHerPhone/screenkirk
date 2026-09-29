@@ -843,6 +843,24 @@ HRESULT CScreenshotEditorRendererGDI::_PaintSizingHelpers(HDC hdc, RECT *prc)
         prc->top + c_iRadiusHalfHelper
     );
 
+    // Center-left
+    Rectangle(
+        hdc,
+        prc->left - c_iRadiusHalfHelper,
+        ((prc->bottom + prc->top) / 2) - c_iRadiusHalfHelper,
+        prc->left + c_iRadiusHalfHelper,
+        ((prc->bottom + prc->top) / 2) + c_iRadiusHalfHelper
+    );
+
+    // Center-right
+    Rectangle(
+        hdc,
+        prc->right - c_iRadiusHalfHelper,
+        ((prc->bottom + prc->top) / 2) - c_iRadiusHalfHelper,
+        prc->right + c_iRadiusHalfHelper,
+        ((prc->bottom + prc->top) / 2) + c_iRadiusHalfHelper
+    );
+
     // Bottom-left
     Rectangle(
         hdc,
