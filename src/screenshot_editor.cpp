@@ -390,7 +390,7 @@ HRESULT CEditorFloatingToolbar::_UnselectTool()
 {
     for (int i = 0, j = SendMessage(_hwndToolbarTools, TB_BUTTONCOUNT, 0, 0); i < j; i++)
     {
-        TBBUTTON tbb;
+		TBBUTTON tbb = { 0 };
         SendMessage(_hwndToolbarTools, TB_GETBUTTON, i, (LPARAM)&tbb);
 
         if (tbb.fsState & TBSTATE_CHECKED)
@@ -715,7 +715,7 @@ HRESULT CScreenshotEditorRendererGDI::HandleWindowMessage(HWND hwnd, UINT uMsg, 
 
 HRESULT CScreenshotEditorRendererGDI::CreateRenderObject(IScreenshotEditorObject *pObj)
 {
-    CRenderObject ro = { 0 };
+    CRenderObject ro;
 
     ro._pObj = pObj;
     pObj->AddRef();
@@ -1438,7 +1438,7 @@ LRESULT CScreenshotEditorWindow::_OnMouseLButtonUp(int x, int y, WPARAM flags)
     }
 
     _fIsSelectingRegion = false;
-    _ptSelectionOrigin = { 0 };
+    _ptSelectionOrigin.x = _ptSelectionOrigin.y = 0;
 
     if (_IsExtensionTool() && _pExtTool)
     {
@@ -1539,7 +1539,7 @@ HRESULT CScreenshotEditorWindow::_LoadExtensionTools()
                                 eti.idTool = SSET_EXTENSIONFIRST + _vExtToolInfo.GetSize(); // Last member's index + 1
                                 ASSERT_EXPR(SUCCEEDED(pTool->GetToolName(&eti.pszToolName)));
                                 eti.pTool = pTool;
-                                DBGPRINT(TEXT("Created tool \"%s\" (" PRINT_GUID_PATTERN ") from extension \"%s\""),
+                                DBGPRINT(TEXT("Created tool \"%s\" (" PRINT_GUID_PATTERN TEXT(") from extension \"%s\"")),
                                     eti.pszToolName,
                                     PRINT_GUID_PARAMS(rgclsid[i]),
                                     pLoadedExt->_pszName ? pLoadedExt->_pszName : pLoadedExt->_pszDllName);
@@ -1547,7 +1547,7 @@ HRESULT CScreenshotEditorWindow::_LoadExtensionTools()
                             }
                             else
                             {
-                                DBGPRINT(TEXT("Failed to create tool " PRINT_GUID_PATTERN " from extension \"%s\""),
+                                DBGPRINT(TEXT("Failed to create tool " PRINT_GUID_PATTERN TEXT(" from extension \"%s\"")),
                                     PRINT_GUID_PARAMS(rgclsid[i]),
                                     pLoadedExt->_pszName ? pLoadedExt->_pszName : pLoadedExt->_pszDllName);
                             }

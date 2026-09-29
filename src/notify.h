@@ -8,7 +8,7 @@ class CNotifyWindow : public CWindow<CNotifyWindow>
 
 private:
     HMENU _hmenu;
-    bool _fIsMenuOpen = false;
+    bool _fIsMenuOpen;
 
 protected:
     LRESULT v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override;
@@ -20,6 +20,12 @@ public:
     {
         WM_NOTIFYICON = WM_APP + 1,
     };
+
+    CNotifyWindow()
+        : _hmenu(nullptr)
+        , _fIsMenuOpen(false)
+    {
+    }
 
     static HRESULT RegisterWindowClass();
     static CNotifyWindow *Create();

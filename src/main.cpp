@@ -26,7 +26,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PTSTR pCmdL
         return 0;
     }
 
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(SCREENKIRK_SHOW_CONSOLE)
     AllocConsole();
 
     FILE *fpOut;

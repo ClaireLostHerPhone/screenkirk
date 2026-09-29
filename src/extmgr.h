@@ -14,7 +14,14 @@ public:
     HRESULT _hr;
 
     CExtensionContext()
+        : _hmod(nullptr)
+        , _pExt(nullptr)
+        , _pszDllName(nullptr)
+        , _pszVersionStr(nullptr)
+        , _pszAuthor(nullptr)
+        , _hr(S_OK)
     {
+        ZeroMemory(_szDllPath, sizeof(_szDllPath));
     }
 
     CExtensionContext(const CExtensionContext &rOther)
@@ -42,7 +49,7 @@ public:
 class CExtensionIterator
 {
     class CExtensionManager *_pExtMgr;
-    UINT _uPos = 0;
+    UINT _uPos;
 
 public:
     CExtensionIterator(CExtensionManager *pMgr)

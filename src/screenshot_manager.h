@@ -33,6 +33,19 @@ public:
     WindowPositionList *_pWndPosList; // A list of all windows, from highest to lowest z-index.
     bool _fCursorVisible;
 
+	CScreenshotContext()
+        : _hbmScreenshot(nullptr)
+        , _hbmCursorColor(nullptr)
+        , _hbmCursorMask(nullptr)
+        , _hbmModified(nullptr)
+		, _pWndPosList(nullptr)
+        , _fCursorVisible(false)
+	{
+        ZeroMemory(&_ptVirtualScreen, sizeof(_ptVirtualScreen));
+        ZeroMemory(&_sizeDesktop, sizeof(_sizeDesktop));
+        ZeroMemory(&_ptCursor, sizeof(_ptCursor));
+	}
+
     ~CScreenshotContext()
     {
         DeleteObject(_hbmScreenshot);

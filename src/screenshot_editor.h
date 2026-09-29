@@ -75,6 +75,13 @@ public:
      */
     static CEditorFloatingToolbar *Create(class CScreenshotEditorWindow *pEditor);
 
+	CEditorFloatingToolbar()
+		: _pEditor(nullptr)
+		, _hwndToolbarTools(nullptr)
+		, _hwndToolbarActions(nullptr)
+	{
+	}
+
     HRESULT SelectOrdinalTool(int idx);
     HRESULT OnToolChanged(ScreenshotEditorTool toolNew);
 };
@@ -86,6 +93,14 @@ public:
     IScreenshotEditorObjectRenderer *_pRenderer;
     IScreenshotEditorObjectRendererGDI *_pRendererGdi;
     HBITMAP _hbmLayer;
+
+	CRenderObject()
+		: _pObj(nullptr)
+		, _pRenderer(nullptr)
+		, _pRendererGdi(nullptr)
+		, _hbmLayer(nullptr)
+	{
+	}
 
     inline bool HasGdiRenderer()
     {
@@ -123,7 +138,7 @@ class CScreenshotEditorRendererGDI
         bool fSelectionDirtySouth : 1;
         bool fSelectionDirtyWest : 1;
         bool fEntireFrameDirty : 1;
-    } _bmp = { 0 };
+    } _bmp;
 
     HRESULT _PaintSelectionRectangle(HDC hdc, RECT *prc, bool fUseMarquee);
     HRESULT _PaintSizingHelpers(HDC hdc, RECT *prc);
@@ -143,9 +158,17 @@ public:
     CScreenshotEditorRendererGDI(CScreenshotContext *pCtx, HWND hwndRenderTarget)
         : _pScreenshotCtx(pCtx)
         , _hwndRenderTarget(hwndRenderTarget)
+		, _hpenSelect(nullptr)
+		, _hpenSizingHelpers(nullptr)
         , _hbmScreenshotLight(pCtx->_hbmScreenshot)
+		, _hbmScreenshotDimmed(nullptr)
+		, _hbmMipmaps(nullptr)
+        , _cMipmaps(0)
+        , _iSelMarqueeFrame(0)
         , _iZoom(1.0)
     {
+        ZeroMemory(&_rcSelection, sizeof(_rcSelection));
+        ZeroMemory(&_rcSelectionVisual, sizeof(_rcSelectionVisual));
     }
 
     ~CScreenshotEditorRendererGDI();
@@ -252,6 +275,22 @@ public:
     STDMETHODIMP GetScreenshotContext(OUT IScreenshotContext **ppContext);
     //@End IScreenshotEditor
 
+	CScreenshotEditorWindow()
+		: _pScreenshotCtx(nullptr)
+		, _pRenderer(nullptr)
+		, _pFloatingToolbar(nullptr)
+        , _tool(SSET_SELECT)
+		, _pExtTool(nullptr)
+        , _iToolMode(0)
+        , _fEnumeratedWindows(false)
+        , _fIsSelectingRegion(false)
+        , _fHasAnySelectionMade(false)
+	{
+        ZeroMemory(&_ptSelectionOrigin, sizeof(_ptSelectionOrigin));
+        ZeroMemory(&_rcSelection, sizeof(_rcSelection));
+        ZeroMemory(&_rcDragBegin, sizeof(_rcDragBegin));
+	}
+
     HRESULT CopyToClipboardAndAccept();
     HRESULT SaveImageToFileAndAccept();
     int GetExtensionToolCount();
@@ -290,4 +329,10 @@ public:
      *
      */
     static CFloatingScreenshotEditorWindow *CreateAndShow(CScreenshotEditorWindow *pEditor);
+
+	CFloatingScreenshotEditorWindow()
+		: _pEditor(nullptr)
+		, _hwndToolbar(nullptr)
+	{
+	}
 };
