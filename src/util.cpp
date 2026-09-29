@@ -5,6 +5,16 @@
 // Operating system detection
 //
 
+static bool IsWine()
+{
+    HMODULE hmNtdll = GetModuleHandle(TEXT("ntdll.dll"));
+    if (hmNtdll && GetProcAddress(hmNtdll, "wine_get_version"))
+    {
+        return true;
+    }
+    return false;
+}
+
 OSVersion g_osVersion = { 0 };
 OSVersion *GetOSVersion()
 {
@@ -12,6 +22,10 @@ OSVersion *GetOSVersion()
         return &g_osVersion;
 
 #ifndef _WIN16
+    g_osVersion.flags |= IsWine()
+        ? OSVF_WINE
+        : 0;
+
     typedef struct _RTL_OSVERSIONINFOW {
         ULONG dwOSVersionInfoSize;
         ULONG dwMajorVersion;
@@ -34,9 +48,7 @@ OSVersion *GetOSVersion()
             g_osVersion.dwMajorVersion = ovi.dwMajorVersion;
             g_osVersion.dwMinorVersion = ovi.dwMinorVersion;
             g_osVersion.dwBuildNumber = ovi.dwBuildNumber;
-#ifndef _UNICODE
-            g_osVersion.fIsNt = true;
-#endif
+            g_osVersion.flags |= OSVF_WINNT;
             return &g_osVersion;
         }
     }
@@ -49,10 +61,16 @@ OSVersion *GetOSVersion()
     {
         g_osVersion.dwMajorVersion = osvi.dwMajorVersion;
         g_osVersion.dwMinorVersion = osvi.dwMinorVersion;
-        g_osVersion.dwBuildNumber = osvi.dwBuildNumber;
-#ifndef _UNICODE
-        g_osVersion.fIsNt = osvi.dwPlatformId == VER_PLATFORM_WIN32_NT;
-#endif
+        g_osVersion.flags |= (osvi.dwPlatformId == VER_PLATFORM_WIN32_NT)
+            ? OSVF_WINNT
+            : 0;
+
+        // On NT, the build number is the whole dwBuildNumber property. On DOS-based Windows, it
+        // it just the lower word of the build number.
+        g_osVersion.dwBuildNumber = (g_osVersion.flags & OSVF_WINNT)
+            ? osvi.dwBuildNumber
+            : LOWORD(osvi.dwBuildNumber);
+
         return &g_osVersion;
     }
 #pragma warning(pop)

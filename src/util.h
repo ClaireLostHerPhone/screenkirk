@@ -1,22 +1,23 @@
 #pragma once
 #include "pch.h"
 
+enum OSVersionFlags
+{
+    OSVF_NONE = 0,
+    OSVF_WINNT = 1 << 0,
+    OSVF_WINE =  1 << 1,
+};
+
 struct OSVersion
 {
     DWORD dwMajorVersion;
     DWORD dwMinorVersion;
     DWORD dwBuildNumber;
-#ifndef _UNICODE
-    bool fIsNt;
-#endif
+    int flags;
 
     inline bool IsWindowsNT()
     {
-#ifndef _UNICODE
-        return fIsNt;
-#else
-        return true;
-#endif
+        return (flags & OSVF_WINNT);
     }
 };
 

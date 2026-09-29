@@ -43,7 +43,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PTSTR pCmdL
     OSVersion *posv = GetOSVersion();
     _tprintf(
         TEXT("Running on %s %d.%d (build %d)\n"),
-        posv->IsWindowsNT() ? TEXT("Windows NT") : TEXT("Windows"),
+        (posv->flags & OSVF_WINE) ? TEXT("Wine") : (posv->flags & OSVF_WINNT) ? TEXT("Windows NT") : TEXT("Windows"),
         posv->dwMajorVersion, posv->dwMinorVersion, posv->dwBuildNumber
     );
 #endif
