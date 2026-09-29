@@ -586,7 +586,7 @@ HRESULT CSaveImage::_EncodeBitmap(char **ppcData, int *pcbData)
 HRESULT CSaveImage::_EncodeWIC(GUID *pEncoderGuid, char **ppcData, int *pcbData)
 {
     IWICBitmap *pBitmap = nullptr;
-    HRESULT hr = _pWicFactory->CreateBitmapFromHBITMAP(_hbm, nullptr, WICBitmapUseAlpha, &pBitmap);
+    HRESULT hr = _pWicFactory->CreateBitmapFromHBITMAP(_hbm, nullptr, WICBitmapIgnoreAlpha, &pBitmap);
     if (SUCCEEDED(hr))
     {
         IStream *pMemStream = nullptr;
