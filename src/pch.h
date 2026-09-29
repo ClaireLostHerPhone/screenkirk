@@ -54,6 +54,23 @@
 #define TOK_CAT_INNER(a, b) a##b
 #define TOK_CAT(a, b) TOK_CAT_INNER(a, b)
 
+#define DEFINE_WINDOW_CLASS(cls) public: static const TCHAR *GetWindowClass() { return TEXT(cls); }
+
+#define FOR_EACH(decl, array)                                                            \
+    for (int i = 0, __size = COUNTOF(array); i < __size; ++i)                            \
+        if (bool __run = true)                                                           \
+            for (decl = (array)[i]; __run; __run = false)
+
+#define FOR_EACH_DYNARR(decl, array)                                                     \
+    for (int i = 0, __size = (array).GetSize(); i < __size; ++i)                         \
+        if (bool __run = true)                                                           \
+            for (decl = (array)[i]; __run; __run = false)
+
+#if defined(_MSVC_LANG) && _MSVC_LANG < 201103L || !defined(_MSVC_LANG) && __cplusplus < 201103L
+    #define nullptr NULL
+    #define constexpr const
+#endif
+
 #define ID_HOTKEY_SCREENSHOT (20)
 
 extern HINSTANCE g_hinst;

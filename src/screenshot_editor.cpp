@@ -103,7 +103,9 @@ HRESULT CEditorFloatingToolbar::_OnCreate()
         // Eventually, I want to make this load icons from alternative sources (perhaps
         // shell32 or imageres) as the operating system supports it. This is fine for now
         // though.
-        TBADDBITMAP ab = { HINST_COMMCTRL, IDB_STD_SMALL_COLOR };
+        TBADDBITMAP ab;
+        ab.hInst = HINST_COMMCTRL;
+        ab.nID = IDB_STD_SMALL_COLOR;
         SendMessage(_hwndToolbarActions, TB_ADDBITMAP, 15, (LPARAM)&ab);
 
         int i = 0;
@@ -219,9 +221,11 @@ HRESULT CEditorFloatingToolbar::_OnCreate()
         HBITMAP hbmSelect = (HBITMAP)LoadImage(g_hinst, MAKEINTRESOURCE(IDB_TOOLSELECT), IMAGE_BITMAP, 16, 16, LR_DEFAULTCOLOR);
         HBITMAP hbmMove = (HBITMAP)LoadImage(g_hinst, MAKEINTRESOURCE(IDB_TOOLMOVE), IMAGE_BITMAP, 16, 16, LR_DEFAULTCOLOR);
 
-        TBADDBITMAP ab = { nullptr, (UINT_PTR)hbmSelect };
+        TBADDBITMAP ab;
+        ab.hInst = nullptr;
+        ab.nID = (UINT_PTR)hbmSelect;
         SendMessage(_hwndToolbarTools, TB_ADDBITMAP, 1, (LPARAM)&ab);
-        ab = { nullptr, (UINT_PTR)hbmMove };
+        ab.nID = (UINT_PTR)hbmMove;
         SendMessage(_hwndToolbarTools, TB_ADDBITMAP, 1, (LPARAM)&ab);
 
         rgtbButtons[i].idCommand = IDM_TOOLFIRST + SSET_SELECT;
@@ -401,7 +405,7 @@ HRESULT CEditorFloatingToolbar::_UnselectTool()
 // static
 HRESULT CEditorFloatingToolbar::RegisterWindowClass()
 {
-    WNDCLASS cls = {};
+    WNDCLASS cls = { 0 };
     cls.hInstance = g_hinst;
     cls.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     cls.hCursor = LoadCursor(nullptr, IDC_ARROW);
@@ -1186,7 +1190,7 @@ LRESULT CScreenshotEditorWindow::_OnCreate(CREATESTRUCT *pCs)
 
 LRESULT CScreenshotEditorWindow::_OnDestroy()
 {
-    for (IScreenshotEditorObject *&pObj : _vObjs)
+    FOR_EACH_DYNARR(IScreenshotEditorObject *&pObj, _vObjs)
     {
         _RemoveObject(pObj);
     }
@@ -1459,7 +1463,8 @@ LRESULT CScreenshotEditorWindow::_OnMouseRButtonDown(int x, int y, WPARAM flags)
         ReleaseCapture();
         _CancelSelection();
         _fIsSelectingRegion = false;
-        _ptSelectionOrigin = { 0, 0 };
+        _ptSelectionOrigin.x = 0;
+        _ptSelectionOrigin.y = 0;
     }
     else if (_IsExtensionTool() && _pExtTool)
     {
@@ -1491,7 +1496,9 @@ HRESULT CScreenshotEditorWindow::_ApplyCrop()
 {
     if (!_fHasAnySelectionMade)
     {
-        _rcSelection = { 0, 0, _pScreenshotCtx->_sizeDesktop.cx, _pScreenshotCtx->_sizeDesktop.cy };
+        _rcSelection.left = _rcSelection.top = 0;
+        _rcSelection.right = _pScreenshotCtx->_sizeDesktop.cx;
+        _rcSelection.bottom = _pScreenshotCtx->_sizeDesktop.cy;
     }
 
     if (SUCCEEDED(_pScreenshotCtx->Crop(&_rcSelection)))
@@ -1536,7 +1543,7 @@ HRESULT CScreenshotEditorWindow::_LoadExtensionTools()
                                     eti.pszToolName,
                                     PRINT_GUID_PARAMS(rgclsid[i]),
                                     pLoadedExt->_pszName ? pLoadedExt->_pszName : pLoadedExt->_pszDllName);
-                                _vExtToolInfo.Push(std::move(eti));
+                                _vExtToolInfo.Push(eti);
                             }
                             else
                             {
@@ -1720,7 +1727,7 @@ void CScreenshotEditorWindow::_UpdateCursor()
 void CScreenshotEditorWindow::_CancelSelection()
 {
     RECT rcSelectionOld = _rcSelection;
-    _rcSelection = { 0, 0 };
+    _rcSelection.left = _rcSelection.top = _rcSelection.right = _rcSelection.bottom = 0;
     _fHasAnySelectionMade = false;
     _pRenderer->UpdateSelection(&_rcSelection);
     _HideFloatingToolbar();
@@ -1777,7 +1784,7 @@ STDMETHODIMP CScreenshotEditorWindow::InsertObject(IScreenshotEditorObject *pObj
     if (!pObj)
         return E_POINTER;
 
-    for (IScreenshotEditorObject *&pExisting : _vObjs)
+    FOR_EACH_DYNARR(IScreenshotEditorObject *&pExisting, _vObjs)
     {
         if (pObj == pExisting)
         {
@@ -1897,7 +1904,7 @@ HRESULT CScreenshotEditorWindow::GetExtensionToolInfo(int idx, OUT ExtensionTool
 // static
 HRESULT CScreenshotEditorWindow::RegisterWindowClass()
 {
-    WNDCLASS cls = {};
+    WNDCLASS cls = { 0 };
     cls.hInstance = g_hinst;
     cls.hbrBackground = nullptr;
     cls.hCursor = nullptr;
@@ -1947,7 +1954,7 @@ LRESULT CFloatingScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM 
 // static
 HRESULT CFloatingScreenshotEditorWindow::RegisterWindowClass()
 {
-    WNDCLASS cls = {};
+    WNDCLASS cls = { 0 };
     cls.hInstance = g_hinst;
     cls.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
     cls.hCursor = LoadCursor(nullptr, IDC_ARROW);

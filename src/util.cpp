@@ -135,7 +135,9 @@ HRESULT CopyBitmap(HBITMAP *phbmDest, HBITMAP hbmSrc, RECT *prcCrop)
         {
             return E_FAIL;
         }
-        rcCrop = { 0, 0, bm.bmWidth, bm.bmHeight };
+        rcCrop.left = rcCrop.top = 0;
+        rcCrop.right = bm.bmWidth;
+        rcCrop.bottom = bm.bmHeight;
     }
 
     HDC hdcDesktop = GetDC(HWND_DESKTOP);

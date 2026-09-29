@@ -37,8 +37,10 @@ HRESULT TakeScreenshot(OUT CScreenshotContext **ppContextOut)
     int xDesktop = GetSystemMetrics(SM_XVIRTUALSCREEN);
     int yDesktop = GetSystemMetrics(SM_YVIRTUALSCREEN);
     
-    pContext->_ptVirtualScreen = { xDesktop, yDesktop };
-    pContext->_sizeDesktop = { cxDesktop, cyDesktop };
+    pContext->_ptVirtualScreen.x = xDesktop;
+    pContext->_ptVirtualScreen.y = yDesktop;
+    pContext->_sizeDesktop.cx = cxDesktop;
+    pContext->_sizeDesktop.cy = cyDesktop;
 
     HDC hdcCopy = CreateCompatibleDC(hdcDesktop);
     pContext->_hbmScreenshot = CreateCompatibleBitmap(hdcDesktop, cxDesktop, cyDesktop);
@@ -180,7 +182,7 @@ HRESULT CSaveImage::OpenSaveDialog()
     OPENFILENAME ofn = { 0 };
     ofn.lStructSize = sizeof(ofn);
     ofn.hInstance = g_hinst;
-    ofn.hwndOwner = FindWindow(c_szScreenshotEditorWindowClassName, nullptr); // lazy
+    ofn.hwndOwner = FindWindow(CScreenshotEditorWindow::GetWindowClass(), nullptr); // lazy
 
     TCHAR szFileName[MAX_PATH];
     ZeroMemory(szFileName, MAX_PATH);
@@ -249,7 +251,7 @@ HRESULT CSaveImage::FetchSupportedCodecs()
     _vCodecInfo.Clear();
 
     // Built-in BMP codec:
-    CodecInfo bmpCodec = {};
+    CodecInfo bmpCodec;
     bmpCodec.provider = CP_BUILTIN;
     _tcscpy_s(bmpCodec.szName, TEXT("Windows Bitmap Codec"));
     _tcscpy_s(bmpCodec.szExtensions, TEXT(".bmp"));
@@ -265,9 +267,9 @@ HRESULT CSaveImage::FetchSupportedCodecs()
 
 HRESULT CSaveImage::_GetFilterExtensions(CDynamicArray<SupportedExtension> *pvse)
 {
-    for (CodecInfo &ci : _vCodecInfo)
+    FOR_EACH_DYNARR(CodecInfo &ci, _vCodecInfo)
     {
-        TCHAR szExtensionList[MAX_PATH] = {};
+        TCHAR szExtensionList[MAX_PATH] = { 0 };
         _tcscpy_s(szExtensionList, ci.szExtensions);
 
         TCHAR *pszContext = nullptr;
@@ -277,7 +279,7 @@ HRESULT CSaveImage::_GetFilterExtensions(CDynamicArray<SupportedExtension> *pvse
             bool fHandled = false;
 
             // Does this extension already exist in the map?
-            for (SupportedExtension &se : *pvse)
+            FOR_EACH_DYNARR(SupportedExtension &se, *pvse)
             {
                 if (_tcscmp(se.szExtension, pszToken) == 0)
                 {
@@ -290,7 +292,7 @@ HRESULT CSaveImage::_GetFilterExtensions(CDynamicArray<SupportedExtension> *pvse
             // Otherwise, add a new entry to the map.
             if (!fHandled)
             {
-                SupportedExtension se = {};
+                SupportedExtension se = { 0 };
                 _tcscpy_s(se.szExtension, pszToken);
                 se.vpProviders.Push(&ci);
                 pvse->Push(se);
@@ -311,9 +313,9 @@ HRESULT CSaveImage::_GetFilterItemList(CDynamicArray<FilterItem> *pvfi)
         return E_FAIL;
     }
 
-    for (SupportedExtension &se : vse)
+    FOR_EACH_DYNARR(SupportedExtension &se, vse)
     {
-        FilterItem fi = {};
+        FilterItem fi = { 0 };
         fi.extension = se;
 
         WCHAR szTypeDisplayName[MAX_PATH] = { 0 };
@@ -330,7 +332,7 @@ HRESULT CSaveImage::_GetFilterItemList(CDynamicArray<FilterItem> *pvfi)
     }
 
     // All items:
-    FilterItem fiAllItems = {};
+    FilterItem fiAllItems = { 0 };
     _tcscpy_s(fiAllItems.extension.szExtension, TEXT("*.*"));
 
     WCHAR szTypeDisplayName[MAX_PATH] = { 0 };
@@ -355,7 +357,7 @@ HRESULT CSaveImage::_BuildFilterString(CDynamicArray<FilterItem> *pvfi, TCHAR **
 
     // 1. Calculate the number of bytes necessary for the string.
     int cchNeeded = 0;
-    for (FilterItem &fi : *pvfi)
+    FOR_EACH_DYNARR(FilterItem &fi, *pvfi)
     {
         cchNeeded += (_tcslen(fi.szDisplayName) + 1);
         cchNeeded += (_tcslen(fi.extension.szExtension) + 1);
@@ -370,7 +372,7 @@ HRESULT CSaveImage::_BuildFilterString(CDynamicArray<FilterItem> *pvfi, TCHAR **
     ZeroMemory(*ppszOut, cchNeeded * sizeof(TCHAR));
 
     bool fIsEmpty = true;
-    for (FilterItem &fi : *pvfi)
+    FOR_EACH_DYNARR(FilterItem &fi, *pvfi)
     {
         // The compiler really wants me to use the "safe" version of this function, but we already
         // know the buffer size and it would be pointless to keep recalculating it. The buffer was
@@ -486,7 +488,7 @@ HRESULT CSaveImage::_FetchWicCodecs()
 
                 // The file extensions are provided in a format that we already support, so we can just
                 // make a codec out of that.
-                CodecInfo ci = {};
+                CodecInfo ci;
                 ci.provider = CP_WIC;
                 _tcscpy_s(ci.szName, szFriendlyName);
                 _tcscpy_s(ci.szExtensions, szExtensions);
@@ -512,7 +514,7 @@ HRESULT CSaveImage::_EncodeImage(char **ppcData, int *pcbData, const TCHAR *pszE
     if (!ppcData || !pcbData || !pszExtension || !pfi)
         return E_POINTER;
 
-    for (CodecInfo *pci : pfi->extension.vpProviders)
+    FOR_EACH_DYNARR(CodecInfo *pci, pfi->extension.vpProviders)
     {
         if (pci->provider == CP_EXTENSION)
         {

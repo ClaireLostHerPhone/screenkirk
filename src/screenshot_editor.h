@@ -39,9 +39,11 @@ struct ExtensionToolInfo
 //
 // Editor floating toolbar (used in fullscreen mode)
 //
-const TCHAR c_szEditorFloatingToolbarClassName[] = TEXT("screenkirk_EditorFloatingToolbar");
-class CEditorFloatingToolbar : public CWindow<CEditorFloatingToolbar, c_szEditorFloatingToolbarClassName>
+class CEditorFloatingToolbar : public CWindow<CEditorFloatingToolbar>
 {
+    DEFINE_WINDOW_CLASS("screenkirk_EditorFloatingToolbar");
+
+private:
     class CScreenshotEditorWindow *_pEditor;
     HWND _hwndToolbarTools;
     HWND _hwndToolbarActions;
@@ -82,7 +84,7 @@ class CRenderObject
 public:
     IScreenshotEditorObject *_pObj;
     IScreenshotEditorObjectRenderer *_pRenderer;
-    IScreenshotEditorObjectRendererGDI *_pRendererGdi = nullptr;
+    IScreenshotEditorObjectRendererGDI *_pRendererGdi;
     HBITMAP _hbmLayer;
 
     inline bool HasGdiRenderer()
@@ -95,17 +97,17 @@ class CScreenshotEditorRendererGDI
 {
     CScreenshotContext *_pScreenshotCtx;
     HWND _hwndRenderTarget;
-    HPEN _hpenSelect = nullptr;
-    HPEN _hpenSizingHelpers = nullptr;
-    HBITMAP _hbmScreenshotLight = nullptr;
-    HBITMAP _hbmScreenshotDimmed = nullptr;
-    HBITMAP *_hbmMipmaps = nullptr;
-    RECT _rcSelection = { 0 };
-    RECT _rcSelectionVisual = { 0 };
+    HPEN _hpenSelect;
+    HPEN _hpenSizingHelpers;
+    HBITMAP _hbmScreenshotLight;
+    HBITMAP _hbmScreenshotDimmed;
+    HBITMAP *_hbmMipmaps;
+    RECT _rcSelection;
+    RECT _rcSelectionVisual;
     CDynamicArray<CRenderObject> _vRenderObjs;
-    int _cMipmaps = 0;
-    int _iSelMarqueeFrame = 0;
-    float _iZoom = 1.0;
+    int _cMipmaps;
+    int _iSelMarqueeFrame;
+    float _iZoom;
 
     struct Bitmap
     {
@@ -142,6 +144,7 @@ public:
         : _pScreenshotCtx(pCtx)
         , _hwndRenderTarget(hwndRenderTarget)
         , _hbmScreenshotLight(pCtx->_hbmScreenshot)
+        , _iZoom(1.0)
     {
     }
 
@@ -161,25 +164,27 @@ public:
 //
 // Editor main window. 
 //
-const TCHAR c_szScreenshotEditorWindowClassName[] = TEXT("screenkirk_ScreenshotEditorWindow");
 class CScreenshotEditorWindow 
-    : public CWindow<CScreenshotEditorWindow, c_szScreenshotEditorWindowClassName>
+    : public CWindow<CScreenshotEditorWindow>
     , public IScreenshotEditor
 {
+    DEFINE_WINDOW_CLASS("screenkirk_ScreenshotEditorWindow");
+
+private:
     CScreenshotContext *_pScreenshotCtx;
-    CScreenshotEditorRendererGDI *_pRenderer = nullptr;
-    CEditorFloatingToolbar *_pFloatingToolbar = nullptr;
+    CScreenshotEditorRendererGDI *_pRenderer;
+    CEditorFloatingToolbar *_pFloatingToolbar;
     CDynamicArray<IScreenshotEditorObject *> _vObjs;
     CDynamicArray<ExtensionToolInfo> _vExtToolInfo;
     POINT _ptSelectionOrigin;
     RECT _rcSelection;
     RECT _rcDragBegin;
-    ScreenshotEditorTool _tool = SSET_SELECT;
-    IScreenshotEditorTool *_pExtTool = nullptr; // The current extension tool, if any.
-    int _iToolMode = 0;
-    bool _fEnumeratedWindows = false;
-    bool _fIsSelectingRegion = false;
-    bool _fHasAnySelectionMade = false;
+    ScreenshotEditorTool _tool;
+    IScreenshotEditorTool *_pExtTool; // The current extension tool, if any.
+    int _iToolMode;
+    bool _fEnumeratedWindows;
+    bool _fIsSelectingRegion;
+    bool _fHasAnySelectionMade;
 
 protected:
     inline bool _IsExtensionTool()
@@ -267,8 +272,11 @@ public:
 // Host window for floating (non-fullscreen) screenshot editors.
 //
 const TCHAR c_szFloatingScreenshotEditorWindowClassName[] = TEXT("screenkirk_FloatingScreenshotEditorWindow");
-class CFloatingScreenshotEditorWindow : public CWindow<CFloatingScreenshotEditorWindow, c_szFloatingScreenshotEditorWindowClassName>
+class CFloatingScreenshotEditorWindow : public CWindow<CFloatingScreenshotEditorWindow>
 {
+    DEFINE_WINDOW_CLASS("screenkirk_FloatingScreenshotEditorWindow");
+
+private:
     CScreenshotEditorWindow *_pEditor;
     HWND _hwndToolbar;
 

@@ -2,9 +2,11 @@
 #include "pch.h"
 #include "window.h"
 
-const TCHAR c_szNotifyWindowClassName[] = TEXT("screenkirk_NotifyWindow");
-class CNotifyWindow : public CWindow<CNotifyWindow, c_szNotifyWindowClassName>
+class CNotifyWindow : public CWindow<CNotifyWindow>
 {
+    DEFINE_WINDOW_CLASS("screenkirk_NotifyWindow");
+
+private:
     HMENU _hmenu;
     bool _fIsMenuOpen = false;
 

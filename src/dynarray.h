@@ -9,21 +9,9 @@
 template <typename TContained>
 class CDynamicArray
 {
-    using Base = std::vector<TContained>;
-    using Iterator = typename Base::iterator;
-    Base _v;
+    std::vector<TContained> _v;
 
 public:
-    inline Iterator begin()
-    {
-        return _v.begin();
-    }
-
-    inline Iterator end()
-    {
-        return _v.end();
-    }
-
     inline bool IsEmpty()
     {
         return _v.empty();
@@ -81,23 +69,6 @@ public:
         try
         {
             _v.push_back(scalar);
-            return S_OK;
-        }
-        catch (std::bad_alloc ex)
-        {
-            return E_OUTOFMEMORY;
-        }
-        catch (...)
-        {
-            return E_FAIL;
-        }
-    }
-
-    inline HRESULT Push(TContained &&moved)
-    {
-        try
-        {
-            _v.push_back(std::move(moved));
             return S_OK;
         }
         catch (std::bad_alloc ex)

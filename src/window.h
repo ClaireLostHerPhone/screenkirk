@@ -1,7 +1,7 @@
 #pragma once
 #include "pch.h"
 
-template <typename CImpl, const TCHAR *c_szClassName>
+template <typename CImpl>
 class CWindow
 {
 protected:
@@ -45,7 +45,7 @@ private:
 protected:
     static HRESULT RegisterWindowClass(WNDCLASS *pWndClass)
     {
-        pWndClass->lpszClassName = c_szClassName;
+        pWndClass->lpszClassName = CImpl::GetWindowClass();
         pWndClass->lpfnWndProc = s_WndProc;
         pWndClass->cbWndExtra = sizeof(CImpl *);
 
@@ -77,7 +77,7 @@ protected:
         DWORD dwExStyle, const TCHAR *lpWindowName, DWORD dwStyle, int x, int y, int cx, int cy,
         HWND hwndParent, HMENU hMenu, HINSTANCE hInstance, void *pParam)
     {
-        HWND hwnd = CreateWindowEx(dwExStyle, c_szClassName, lpWindowName, dwStyle, x, y, cx, cy,
+        HWND hwnd = CreateWindowEx(dwExStyle, CImpl::GetWindowClass(), lpWindowName, dwStyle, x, y, cx, cy,
             hwndParent, hMenu, hInstance, pParam);
         return hwnd
             ? (CImpl *)GetWindowLongPtr(hwnd, 0)

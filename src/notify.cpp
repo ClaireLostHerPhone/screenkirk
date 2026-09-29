@@ -118,7 +118,7 @@ HRESULT CNotifyWindow::_CreateNotifyIcon()
 // static
 HRESULT CNotifyWindow::RegisterWindowClass()
 {
-    WNDCLASS cls = {};
+    WNDCLASS cls = { 0 };
     cls.hInstance = g_hinst;
     cls.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
     cls.hCursor = LoadCursor(nullptr, IDC_ARROW);

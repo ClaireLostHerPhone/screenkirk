@@ -60,7 +60,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PTSTR pCmdL
     // TODO: Support loading a hotkey from user configuration.
     RegisterHotKey(nullptr, ID_HOTKEY_SCREENSHOT, MOD_SHIFT | MOD_WIN, 'S');
 
-    MSG msg = {};
+    MSG msg = { 0 };
     while (GetMessage(&msg, nullptr, 0, 0))
     {
         if (msg.hwnd == nullptr && msg.message == WM_HOTKEY && msg.wParam == ID_HOTKEY_SCREENSHOT)

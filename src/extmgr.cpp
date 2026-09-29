@@ -2,7 +2,7 @@
 #include "extmgr.h"
 #include "util.h"
 
-using DllGetClassObject_t = decltype(&DllGetClassObject);
+typedef HRESULT (WINAPI *DllGetClassObject_t)(REFCLSID rclsid, REFIID riid, LPVOID *ppv);
 
 CExtensionManager *g_pExtMgrInst = nullptr;
 
@@ -152,7 +152,7 @@ HRESULT CExtensionManager::LoadExtension(const TCHAR *pszPath)
     }
 
     le._hr = hr;
-    _vLoadedExts.Push(std::move(le));
+    _vLoadedExts.Push(le);
     return hr;
 }
 
