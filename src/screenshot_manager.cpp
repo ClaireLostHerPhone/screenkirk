@@ -221,7 +221,7 @@ HRESULT CSaveImage::OpenSaveDialog()
 
     FilterItem *pSelectedFilterItem = &vFilterItems.At(ofn.nFilterIndex - 1);
 
-    const WCHAR *pszExtension = PathFindFileExtension(szFileName);
+    const TCHAR *pszExtension = PathFindFileExtension(szFileName);
     char *pcData = nullptr;
     int cbData = 0;
     if (FAILED(_EncodeImage(&pcData, &cbData, pszExtension, pSelectedFilterItem)))
@@ -318,7 +318,7 @@ HRESULT CSaveImage::_GetFilterItemList(CDynamicArray<FilterItem> *pvfi)
         FilterItem fi = { 0 };
         fi.extension = se;
 
-        WCHAR szTypeDisplayName[MAX_PATH] = { 0 };
+        TCHAR szTypeDisplayName[MAX_PATH] = { 0 };
         if (SUCCEEDED(_GetFileTypeName(se.szExtension, szTypeDisplayName, ARRAYSIZE(szTypeDisplayName))))
         {
             _stprintf_s(fi.szDisplayName, TEXT("%s (%s)"), szTypeDisplayName, fi.extension.szExtension);
@@ -335,7 +335,7 @@ HRESULT CSaveImage::_GetFilterItemList(CDynamicArray<FilterItem> *pvfi)
     FilterItem fiAllItems = { 0 };
     _tcscpy_s(fiAllItems.extension.szExtension, TEXT("*.*"));
 
-    WCHAR szTypeDisplayName[MAX_PATH] = { 0 };
+    TCHAR szTypeDisplayName[MAX_PATH] = { 0 };
     if (SUCCEEDED(_GetLocalizedAllFilesString(szTypeDisplayName, ARRAYSIZE(szTypeDisplayName))))
     {
         _tcscpy_s(fiAllItems.szDisplayName, szTypeDisplayName);
@@ -430,7 +430,7 @@ HRESULT CSaveImage::_GetLocalizedAllFilesString(TCHAR *pszOut, int cch)
 
     HRESULT hr = E_FAIL;
 
-    typedef HRESULT (WINAPI *SHLoadIndirectString_t)(PCWSTR pszSource, PWSTR pszOutBuf, UINT cchOutBuf, void **ppvReserved);
+    typedef HRESULT (WINAPI *SHLoadIndirectString_t)(PCTSTR pszSource, PTSTR pszOutBuf, UINT cchOutBuf, void **ppvReserved);
     HMODULE hmShlwapi = LoadLibrary(TEXT("shlwapi.dll"));
     if (hmShlwapi)
     {
