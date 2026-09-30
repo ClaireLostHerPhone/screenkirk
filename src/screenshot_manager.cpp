@@ -3,7 +3,15 @@
 #include "screenshot_editor.h"
 #include "util.h"
 #include "dynarray.h"
-#include <wincodec.h>
+
+// WIC is currently disabled for VS 2005 builds since the wincodec header cannot be used with it.
+#if defined(_UNICODE) && (defined(_MSVC_LANG) && _MSVC_LANG >= 201103L || !defined(_MSVC_LANG) && __cplusplus >= 201103L)
+#define COMPILETIME_ENABLE_WIC
+#endif
+
+#ifdef COMPILETIME_ENABLE_WIC
+    #include <wincodec.h>
+#endif
 
 void OnScreenshotKeyPressed()
 {
@@ -117,7 +125,7 @@ class CSaveImage
     HBITMAP _hbm;
     CDynamicArray<CodecInfo> _vCodecInfo;
 
-#ifdef _UNICODE
+#ifdef COMPILETIME_ENABLE_WIC
     IWICImagingFactory *_pWicFactory = nullptr;
 #endif
 
@@ -148,7 +156,7 @@ public:
     HRESULT OpenSaveDialog();
     inline bool IsWicAvailable()
     {
-#ifdef _UNICODE
+#ifdef COMPILETIME_ENABLE_WIC
         return _pWicFactory != nullptr;
 #else
         // Non Unicode builds target Windows 9x, which does not support WIC.
@@ -257,7 +265,7 @@ HRESULT CSaveImage::FetchSupportedCodecs()
     _tcscpy_s(bmpCodec.szExtensions, TEXT(".bmp"));
     _vCodecInfo.Push(bmpCodec);
 
-#ifdef _UNICODE
+#ifdef COMPILETIME_ENABLE_WIC
     // If WIC is available, then load all codecs from it.
     _FetchWicCodecs();
 #endif
@@ -460,6 +468,7 @@ HRESULT CSaveImage::_FetchWicCodecs()
         return E_NOTIMPL; // This result code works well enough.
     }
 
+#ifdef COMPILETIME_ENABLE_WIC
     IEnumUnknown *pEnum = nullptr;
     HRESULT hr = _pWicFactory->CreateComponentEnumerator(
         WICEncoder,
@@ -507,6 +516,9 @@ HRESULT CSaveImage::_FetchWicCodecs()
     }
 
     return hr;
+#else
+    return E_NOTIMPL;
+#endif
 }
 
 HRESULT CSaveImage::_EncodeImage(char **ppcData, int *pcbData, const TCHAR *pszExtension, FilterItem *pfi)
@@ -587,6 +599,7 @@ HRESULT CSaveImage::_EncodeBitmap(char **ppcData, int *pcbData)
 // Yes, the function is a horrible pyramid.
 HRESULT CSaveImage::_EncodeWIC(GUID *pEncoderGuid, char **ppcData, int *pcbData)
 {
+#ifdef COMPILETIME_ENABLE_WIC
     IWICBitmap *pBitmap = nullptr;
     HRESULT hr = _pWicFactory->CreateBitmapFromHBITMAP(_hbm, nullptr, WICBitmapIgnoreAlpha, &pBitmap);
     if (SUCCEEDED(hr))
@@ -701,6 +714,9 @@ HRESULT CSaveImage::_EncodeWIC(GUID *pEncoderGuid, char **ppcData, int *pcbData)
     }
 
     return hr;
+#else
+    return E_NOTIMPL;
+#endif
 }
 
 HRESULT CScreenshotContext::GetWindowPositions(OnGetWindowPositionsCB cb)
