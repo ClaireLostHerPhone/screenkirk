@@ -998,47 +998,112 @@ HRESULT CScreenshotEditorRendererGDI::_MakeDimmedScreenshot()
         HDC hdcDimmed = CreateCompatibleDC(hdcDesktop);
         if (hdcDimmed)
         {
-            BITMAPINFO bmi = { 0 };
-            bmi.bmiHeader.biSize = sizeof(bmi);
-            bmi.bmiHeader.biWidth = _pScreenshotCtx->_sizeDesktop.cx;
-            bmi.bmiHeader.biHeight = _pScreenshotCtx->_sizeDesktop.cy;
-            bmi.bmiHeader.biPlanes = 1;
-            bmi.bmiHeader.biBitCount = 32;
-            bmi.bmiHeader.biCompression = BI_RGB;
-            bmi.bmiHeader.biSizeImage = 0;
-
-            void *pvPixels = nullptr;
-            _hbmScreenshotDimmed = CreateDIBSection(hdcDimmed, &bmi, DIB_RGB_COLORS, &pvPixels, nullptr, 0);
-            if (_hbmScreenshotDimmed)
+            BITMAP bm = { 0 };
+            if (GetObject(_pScreenshotCtx->_hbmScreenshot, sizeof(bm), &bm))
             {
-                HGDIOBJ hObjOld = SelectObject(hdcDimmed, _hbmScreenshotDimmed);
+                DBGPRINT(
+                    TEXT("Got a bitmap with qualities:\n")
+                    TEXT(" - bmType: %d\n")
+                    TEXT(" - bmWidth: %d\n")
+                    TEXT(" - bmHeight: %d\n")
+                    TEXT(" - bmWidthBytes: %d\n")
+                    TEXT(" - bmPlanes: %d\n")
+                    TEXT(" - bmBitsPixel: %d\n")
+                    TEXT(" - bmBits: %d\n"),
+                    bm.bmType,
+                    bm.bmWidth,
+                    bm.bmHeight,
+                    bm.bmWidthBytes,
+                    bm.bmPlanes,
+                    bm.bmBitsPixel,
+                    bm.bmBits
+                );
 
-                HDC hdcOrig = CreateCompatibleDC(hdcDesktop);
-                HGDIOBJ hObjOld2 = SelectObject(hdcOrig, _pScreenshotCtx->_hbmScreenshot);
+                BITMAPINFO bmi = { 0 };
+                bmi.bmiHeader.biSize = sizeof(bmi.bmiHeader);
+                bmi.bmiHeader.biWidth = _pScreenshotCtx->_sizeDesktop.cx;
+                bmi.bmiHeader.biHeight = -_pScreenshotCtx->_sizeDesktop.cy;
+                bmi.bmiHeader.biPlanes = 1;
+                bmi.bmiHeader.biBitCount = bm.bmBitsPixel;
+                bmi.bmiHeader.biCompression = BI_RGB;
+                bmi.bmiHeader.biSizeImage = 0;
 
-                BitBlt(hdcDimmed, 0, 0, _pScreenshotCtx->_sizeDesktop.cx, _pScreenshotCtx->_sizeDesktop.cy, hdcOrig, 0, 0, SRCCOPY);
-
-                SelectObject(hdcOrig, hObjOld2);
-                DeleteDC(hdcOrig);
-
-                ULONG *pulSrc = (ULONG *)pvPixels;
-                constexpr static int c_iDimAmount = 0xFF * 0.75;
-                int cLength = _pScreenshotCtx->_sizeDesktop.cx * _pScreenshotCtx->_sizeDesktop.cy;
-
-                for (int i = cLength - 1; i >= 0; i--)
+                void *pvPixels = nullptr;
+                _hbmScreenshotDimmed = CreateDIBSection(hdcDimmed, &bmi, DIB_RGB_COLORS, &pvPixels, nullptr, 0);
+                if (_hbmScreenshotDimmed && bm.bmBitsPixel >= 24)
                 {
-                    ULONG ulR = GetRValue(*pulSrc);
-                    ULONG ulG = GetGValue(*pulSrc);
-                    ULONG ulB = GetBValue(*pulSrc);
-                    ULONG ulDim = (0xFF - c_iDimAmount);
-                    ulR = (ulR * c_iDimAmount + ulDim) >> 8;
-                    ulG = (ulG * c_iDimAmount + ulDim) >> 8;
-                    ulB = (ulB * c_iDimAmount + ulDim) >> 8;
-                    *pulSrc = (*pulSrc & 0xFF000000) | RGB(ulR, ulG, ulB);
-                    pulSrc++;
-                }
+                    HGDIOBJ hObjOld = SelectObject(hdcDimmed, _hbmScreenshotDimmed);
 
-                SelectObject(hdcDimmed, hObjOld);
+                    HDC hdcOrig = CreateCompatibleDC(hdcDesktop);
+                    HGDIOBJ hObjOld2 = SelectObject(hdcOrig, _pScreenshotCtx->_hbmScreenshot);
+
+                    BitBlt(hdcDimmed, 0, 0, _pScreenshotCtx->_sizeDesktop.cx, _pScreenshotCtx->_sizeDesktop.cy, hdcOrig, 0, 0, SRCCOPY);
+
+                    SelectObject(hdcOrig, hObjOld2);
+                    DeleteDC(hdcOrig);
+
+                    constexpr static int c_iDimAmount = 0xFF * 0.75;
+
+                    int iWidth = _pScreenshotCtx->_sizeDesktop.cx;
+                    int iHeight = _pScreenshotCtx->_sizeDesktop.cy;
+
+                    if (bm.bmBitsPixel == 32)
+                    {
+                        int cLength = _pScreenshotCtx->_sizeDesktop.cx * _pScreenshotCtx->_sizeDesktop.cy;
+                        ULONG *pulSrc = (ULONG *)pvPixels;
+                        for (int i = cLength - 1; i >= 0; i--)
+                        {
+                            ULONG ulR = GetRValue(*pulSrc);
+                            ULONG ulG = GetGValue(*pulSrc);
+                            ULONG ulB = GetBValue(*pulSrc);
+                            ULONG ulDim = (0xFF - c_iDimAmount);
+                            ulR = (ulR * c_iDimAmount + ulDim) >> 8;
+                            ulG = (ulG * c_iDimAmount + ulDim) >> 8;
+                            ulB = (ulB * c_iDimAmount + ulDim) >> 8;
+                            *pulSrc = (*pulSrc & 0xFF000000) | RGB(ulR, ulG, ulB);
+                            pulSrc++;
+                        }
+                    }
+                    else if (bm.bmBitsPixel == 24)
+                    {
+                        // Pad the number of bytes to a 4-byte boundary.
+                        int iStride = ((iWidth * 24 + 31) & ~31) >> 3;
+
+                        BYTE *pBaseRow = (BYTE *)pvPixels;
+                        ULONG ulDim = (0xFF - c_iDimAmount);
+
+                        for (int y = 0; y < iHeight; y++)
+                        {
+                            BYTE *pPixel = pBaseRow;
+
+                            for (int x = 0; x < iWidth; x++)
+                            {
+                                ULONG ulB = pPixel[0];
+                                ULONG ulG = pPixel[1];
+                                ULONG ulR = pPixel[2];
+
+                                ulR = (ulR * c_iDimAmount + ulDim) >> 8;
+                                ulG = (ulG * c_iDimAmount + ulDim) >> 8;
+                                ulB = (ulB * c_iDimAmount + ulDim) >> 8;
+
+                                pPixel[0] = (BYTE)ulB;
+                                pPixel[1] = (BYTE)ulG;
+                                pPixel[2] = (BYTE)ulR;
+
+                                pPixel += 3;
+                            }
+
+                            pBaseRow += iStride;
+                        }
+                    }
+                    else
+                    {
+                        // We should never get here.
+                        assert(0);
+                    }
+
+                    SelectObject(hdcDimmed, hObjOld);
+                }
             }
 
             DeleteDC(hdcDimmed);
