@@ -1,4 +1,7 @@
 .vs/
+*.ncb
+*.suo
+*.vcproj.*.user
 *.vcxproj.filters
 *.vcxproj.user
 bin/

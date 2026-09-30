@@ -77,6 +77,9 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PTSTR pCmdL
     }
     else
     {
+#ifndef MOD_NOREPEAT
+#define MOD_NOREPEAT 0x4000
+#endif
         // This works for now.
         RegisterHotKey(nullptr, ID_HOTKEY_SCREENSHOT, MOD_SHIFT | MOD_NOREPEAT, VK_SCROLL);
     }

@@ -1,0 +1,26 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 9.00
+# Visual Studio 2005
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "screenkirk", "src\screenkirk-vs2005.vcproj", "{E87CF442-E537-4140-98FE-F180B922E43E}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "text_tool", "ext_src\text_tool\text_tool-vs2005.vcproj", "{977F2463-9D5D-4842-BD6F-7779CB48FBB0}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E87CF442-E537-4140-98FE-F180B922E43E}.Debug|Win32.ActiveCfg = Debug|Win32
+		{E87CF442-E537-4140-98FE-F180B922E43E}.Debug|Win32.Build.0 = Debug|Win32
+		{E87CF442-E537-4140-98FE-F180B922E43E}.Release|Win32.ActiveCfg = Release|Win32
+		{E87CF442-E537-4140-98FE-F180B922E43E}.Release|Win32.Build.0 = Release|Win32
+		{977F2463-9D5D-4842-BD6F-7779CB48FBB0}.Debug|Win32.ActiveCfg = Debug|Win32
+		{977F2463-9D5D-4842-BD6F-7779CB48FBB0}.Debug|Win32.Build.0 = Debug|Win32
+		{977F2463-9D5D-4842-BD6F-7779CB48FBB0}.Release|Win32.ActiveCfg = Release|Win32
+		{977F2463-9D5D-4842-BD6F-7779CB48FBB0}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

@@ -169,13 +169,15 @@ public:
 
 CSaveImage::~CSaveImage()
 {
+#ifdef COMPILETIME_ENABLE_WIC
     if (_pWicFactory)
         _pWicFactory->Release();
+#endif
 }
 
 HRESULT CSaveImage::Initialize()
 {
-#ifndef _WIN16
+#ifdef COMPILETIME_ENABLE_WIC
     HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
     // We don't care if the WIC factory fails to be created.

@@ -3,6 +3,10 @@
 #include <initguid.h>
 #include <comdef.h>
 
+#ifndef DECLARE_INTERFACE_IID_
+#define DECLARE_INTERFACE_IID_(iface, baseiface, iid)   interface DECLSPEC_UUID(iid) DECLSPEC_NOVTABLE iface : public baseiface
+#endif
+
 // I don't think this would benefit from being a COM class.
 DECLARE_INTERFACE(IScreenshotContext)
 {
