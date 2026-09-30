@@ -70,7 +70,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PTSTR pCmdL
     }
 
     // TODO: Support loading a hotkey from user configuration.
-    if (GetOSVersion()->flags == OSVF_WINNT)
+    if (!(GetOSVersion()->flags & OSVF_WINE))
     {
         // This does not work on some platforms for some reason.
         RegisterHotKey(nullptr, ID_HOTKEY_SCREENSHOT, MOD_SHIFT | MOD_WIN, 'S');
