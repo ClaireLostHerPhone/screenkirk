@@ -54,6 +54,7 @@ class CExtensionIterator
 public:
     CExtensionIterator(CExtensionManager *pMgr)
         : _pExtMgr(pMgr)
+        , _uPos(0)
     {
     }
 

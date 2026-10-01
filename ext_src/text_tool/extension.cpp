@@ -14,6 +14,15 @@ STDMETHODIMP CTextEditorExtension::QueryInterface(const IID &riid, void **ppvOut
     return E_NOINTERFACE;
 }
 
+STDMETHODIMP_(ULONG) CTextEditorExtension::GetExtensionFlags()
+{
+    ULONG uFlags = 0;
+#ifdef _UNICODE
+    uFlags |= SSEEF_UNICODE;
+#endif
+    return uFlags;
+}
+
 STDMETHODIMP CTextEditorExtension::GetName(OUT const TCHAR **pszOut)
 {
     return StaticCoTaskMemStringAlloc(TEXT("Text Tool"), (TCHAR **)pszOut);

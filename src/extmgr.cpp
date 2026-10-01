@@ -125,14 +125,30 @@ HRESULT CExtensionManager::LoadExtension(const TCHAR *pszPath)
                 {
                     le._pExt = pExt;
 
-                    if (FAILED(pExt->GetName(&le._pszName)))
-                        le._pszName = nullptr;
-                    if (FAILED(pExt->GetVersionString(&le._pszVersionStr)))
-                        le._pszVersionStr = nullptr;
-                    if (FAILED(pExt->GetAuthor(&le._pszAuthor)))
-                        le._pszAuthor = nullptr;
+                    UINT uFlags = pExt->GetExtensionFlags();
+#ifdef _UNICODE
+                    if (!(uFlags & SSEEF_UNICODE))
+                    {
+                        hr = E_FAIL;
+                    }
+#else
+                    if (uFlags & SSEEF_UNICODE)
+                    {
+                        hr = E_FAIL;
+                    }
+#endif
 
-                    hr = S_OK;
+                    if (SUCCEEDED(hr))
+                    {
+                        if (FAILED(pExt->GetName(&le._pszName)))
+                            le._pszName = nullptr;
+                        if (FAILED(pExt->GetVersionString(&le._pszVersionStr)))
+                            le._pszVersionStr = nullptr;
+                        if (FAILED(pExt->GetAuthor(&le._pszAuthor)))
+                            le._pszAuthor = nullptr;
+
+                        hr = S_OK;
+                    }
                 }
                 else
                 {

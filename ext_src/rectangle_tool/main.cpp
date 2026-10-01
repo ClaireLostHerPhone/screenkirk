@@ -38,7 +38,7 @@ STDMETHODIMP CExtensionClassFactory::CreateInstance(IUnknown *pUnkOuter, const I
     if (&riid == nullptr || !ppvOut)
         return E_POINTER;
 
-    CTextEditorExtension *pExt = new (std::nothrow) CTextEditorExtension();
+    CRectangleToolExtension *pExt = new (std::nothrow) CRectangleToolExtension();
     if (pExt)
     {
         HRESULT hr = pExt->QueryInterface(riid, ppvOut);

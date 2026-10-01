@@ -779,16 +779,17 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
             SRCCOPY
         );
 
-        _PaintSelectionRectangle(hdcSelection, &_rcSelection, _bmp.fDrawMarqueeSelection);
-        if (_bmp.fDrawSelectionSizeHelpers)
+        // If we have an object selected, then we want that to be the frontmost selection outline.
+        // In this case, we will render the guidelines in the back.
+        if (_pRenderObjSel)
         {
-            _PaintSizingHelpers(hdcSelection, &_rcSelection);
+            _PaintSelectionRectangle(hdcSelection, &_rcSelection, false);
         }
 
         SelectObject(hdcScreenshot, hObjOldSS);
     }
 
-    if (_bmp.fAnyObjectDirty)
+    if (true||_bmp.fAnyObjectDirty)
     {
         HDC hdcSelection = fUseBackbuffer
             ? hdcBackbuffer
@@ -813,16 +814,39 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
                     continue;
                 }
 
+                bool fObjNoBackbuffer = pRenderObject->_pObj->GetFlags() & SSEOF_NOBACKBUFFER;
+
                 // If the object is dirty, then we will repaint its buffer. Otherwise, the object's
                 // paint routine is skipped, and the existing image in the buffer is copied back
                 // over the editor framebuffer.
-                if (pRenderObject->_pObj->IsVisualDirty())
+                if (true||fObjNoBackbuffer || pRenderObject->_pObj->IsVisualDirty())
                 {
-                    ASSERT_EXPR(SUCCEEDED(_PaintRenderObjectVisualBuffer(hdc, prcPaint, pRenderObject)));
+                    ASSERT_EXPR(SUCCEEDED(_PaintRenderObjectVisualBuffer(hdcSelection, prcPaint, pRenderObject, fObjNoBackbuffer)));
+                }
+                else
+                {
+                    // AlphaBlend the object's visual layer into the current framebuffer...
+                    // (if we support it, that is...)
                 }
             }
+        }
+    }
+    
+    // If we have a selection made and no object is selected, then we want to render the
+    // selection outline for the screenshot selection in front.
+    if (_bmp.fHasAnySelectionMade)
+    {
+        HDC hdcSelection = fUseBackbuffer
+            ? hdcBackbuffer
+            : hdc;
 
-            // Then AlphaBlt the object's visual layer into the current framebuffer...
+        if (!_pRenderObjSel)
+        {
+            _PaintSelectionRectangle(hdcSelection, &_rcSelection, _bmp.fDrawMarqueeSelection);
+            if (_bmp.fDrawSelectionSizeHelpers)
+            {
+                _PaintSizingHelpers(hdcSelection, &_rcSelection);
+            }
         }
     }
 
@@ -851,6 +875,7 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
     _bmp.fSelectionDirtySouth = false;
     _bmp.fSelectionDirtyEast = false;
     _bmp.fSelectionDirtyWest = false;
+    _bmp.fAnyObjectDirty = false;
 
     return S_OK;
 }
@@ -1003,12 +1028,25 @@ HRESULT CScreenshotEditorRendererGDI::RemoveRenderObject(IScreenshotEditorObject
 
 HRESULT CScreenshotEditorRendererGDI::InvalidateRenderObject(IScreenshotEditorObject *pObj)
 {
-    RECT rcVisual = { 0 };
-    if (SUCCEEDED(pObj->GetVisualRect(&rcVisual)))
+    RECT rcLogical = { 0 };
+    if (SUCCEEDED(pObj->GetLogicalRect(&rcLogical)))
     {
-        _bmp.fAnyObjectDirty = true;
-        InvalidateRect(_hwndRenderTarget, &rcVisual, FALSE);
-        return S_OK;
+        RECT rcVisual = { 0 };
+        if (SUCCEEDED(pObj->GetVisualRect(&rcVisual)))
+        {
+            OffsetRect(&rcVisual, rcLogical.left, rcLogical.top);
+
+            CRenderObject *pro = nullptr;
+            if (SUCCEEDED(_FindRenderObjectFromInterfaceObject(pObj, &pro, nullptr)))
+            {
+                RECT rcUnion;
+                UnionRect(&rcUnion, &rcVisual, &pro->_rcLatestVisual);
+
+                _bmp.fAnyObjectDirty = true;
+                InvalidateRect(_hwndRenderTarget, &rcUnion, FALSE);
+                return S_OK;
+            }
+        }
     }
     else
     {
@@ -1024,7 +1062,7 @@ HRESULT CScreenshotEditorRendererGDI::_PaintSelectionRectangle(HDC hdc, RECT *pr
     int iOldBkMode = SetBkMode(hdc, TRANSPARENT);
     int iOldRop = SetROP2(hdc, R2_XORPEN);
 
-    if (!_bmp.fDrawMarqueeSelection || S_FALSE == _DrawMarqueeDottedRectangle(hdc, prc))
+    if (!fUseMarquee || S_FALSE == _DrawMarqueeDottedRectangle(hdc, prc))
     {
         Rectangle(hdc, prc->left, prc->top, prc->right, prc->bottom);
     }
@@ -1127,11 +1165,20 @@ HRESULT CScreenshotEditorRendererGDI::_PaintSizingHelpers(HDC hdc, RECT *prc)
     return S_OK;
 }
 
-HRESULT CScreenshotEditorRendererGDI::_PaintRenderObjectVisualBuffer(HDC hdcRenderTarget, RECT *prcPaint, CRenderObject *pRenderObject)
+HRESULT CScreenshotEditorRendererGDI::_PaintRenderObjectVisualBuffer(
+    HDC hdcRenderTarget, RECT *prcPaint, CRenderObject *pRenderObject, bool fUseBackbuffer)
 {
+    // Double buffering isn't implemented yet for render objects. When it is, it will require
+    // AlphaBlend to be available on the platform (and probably a high color depth). In other
+    // cases, the render object is repainted when the region of the window it occupies is
+    // invalidated.
+    fUseBackbuffer = false;
+
     if (pRenderObject->HasGdiRenderer())
     {
-        HDC hdcLayer = CreateCompatibleDC(hdcRenderTarget);
+        HDC hdcLayer = fUseBackbuffer
+            ? CreateCompatibleDC(hdcRenderTarget)
+            : hdcRenderTarget;
         if (hdcLayer)
         {
             RECT rcLogical;
@@ -1140,26 +1187,40 @@ HRESULT CScreenshotEditorRendererGDI::_PaintRenderObjectVisualBuffer(HDC hdcRend
                 && SUCCEEDED(pRenderObject->_pObj->GetVisualRect(&rcVisual)))
             {
                 OffsetRect(&rcVisual, rcLogical.left, rcLogical.top);
+                pRenderObject->_rcLatestVisual = rcVisual;
 
-                if (!pRenderObject->_hbmLayer)
+                if (fUseBackbuffer && !pRenderObject->_hbmLayer)
                 {
                     pRenderObject->_hbmLayer = CreateCompatibleBitmap(hdcRenderTarget, RECTWIDTH(rcVisual), RECTHEIGHT(rcVisual));
                 }
 
-                if (pRenderObject->_hbmLayer)
+                if (!fUseBackbuffer || pRenderObject->_hbmLayer)
                 {
                     HGDIOBJ hObjOld = SelectObject(hdcLayer, pRenderObject->_hbmLayer);
 
-                    SetViewportOrgEx(hdcLayer, rcVisual.left, rcVisual.top, nullptr);
+                    POINT ptViewportOld;
+                    // If we aren't using a backbuffer, then we need to translate the viewport by the paint rect or
+                    // the positioning will be off when painting small regions.
+                    if (!fUseBackbuffer)
+                        SetViewportOrgEx(hdcLayer, -prcPaint->left + rcVisual.left, -prcPaint->top + rcVisual.top, &ptViewportOld);
+                    else
+                        SetViewportOrgEx(hdcLayer, rcVisual.left, rcVisual.top, &ptViewportOld);
 
                     ASSERT_EXPR(SUCCEEDED(pRenderObject->_pRendererGdi->SetGdiParameters(hdcLayer, prcPaint)));
                     ASSERT_EXPR(SUCCEEDED(pRenderObject->_pRendererGdi->Paint()));
 
                     SelectObject(hdcLayer, hObjOld);
+
+                    if (!fUseBackbuffer)
+                        SetViewportOrgEx(hdcLayer, ptViewportOld.x, ptViewportOld.y, nullptr);
                 }
             }
-            DeleteDC(hdcLayer);
+
+            if (fUseBackbuffer)
+                DeleteDC(hdcLayer);
         }
+
+        return S_OK;
     }
     else
     {
@@ -1491,7 +1552,7 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
         case WM_KEYUP:
         {
             HRESULT hrExtensionTool = S_FALSE;
-            if (_IsExtensionTool() && _pExtTool)
+            if (_IsExtensionTool())
             {
                 hrExtensionTool = _pExtTool->OnKeyDown(wParam, lParam);
 
@@ -1609,9 +1670,9 @@ LRESULT CScreenshotEditorWindow::_OnCreate(CREATESTRUCT *pCs)
 
 LRESULT CScreenshotEditorWindow::_OnDestroy()
 {
-    FOR_EACH_DYNARR(IScreenshotEditorObject *&pObj, _vObjs)
+    for (int i = _vObjs.GetSize() - 1; i > 0; i--)
     {
-        _RemoveObject(pObj);
+        _RemoveObject(_vObjs[i]);
     }
 
     if (_pRenderer)
@@ -1626,7 +1687,7 @@ LRESULT CScreenshotEditorWindow::_OnDestroy()
 LRESULT CScreenshotEditorWindow::_OnKeyDown(WPARAM virtualKey, LPARAM lParam)
 {
     HRESULT hrExtensionTool = S_FALSE;
-    if (_IsExtensionTool() && _pExtTool)
+    if (_IsExtensionTool())
     {
         hrExtensionTool = _pExtTool->OnKeyDown(virtualKey, lParam);
 
@@ -1772,34 +1833,35 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
                 _pRenderer->UpdateSelection(&_rcSelection);
             }
         }
+        else if (_IsExtensionTool() && (_pExtTool->GetFlags() & SSETF_DRAWSELECTION))
+        {
+            _rcDragSelectCur.left = x < _ptSelectionOrigin.x
+                ? x
+                : _ptSelectionOrigin.x;
+            _rcDragSelectCur.top = y < _ptSelectionOrigin.y
+                ? y
+                : _ptSelectionOrigin.y;
+            _rcDragSelectCur.right = x >= _ptSelectionOrigin.x
+                ? x
+                : _ptSelectionOrigin.x;
+            _rcDragSelectCur.bottom = y >= _ptSelectionOrigin.y
+                ? y
+                : _ptSelectionOrigin.y;
+
+            HRESULT hr = _pExtTool->OnSelectionChange(&_rcDragSelectCur);
+            if (hr == S_FALSE)
+            {
+                return 0;
+            }
+        }
     }
     else if (_tool == SSET_DRAG)
     {
         // Set drag tool mode.
-        constexpr static int c_iGrabRadius = 4; // On both sides.
-        int dm = DRAGM_DRAG;
-
-        if (y >= (_rcSelection.top - c_iGrabRadius) && y <= (_rcSelection.top + c_iGrabRadius)
-            && x >= (_rcSelection.left - c_iGrabRadius) && x <= (_rcSelection.right + c_iGrabRadius))
-        {
-            dm |= DRAGM_SIZEN;
-        }
-        else if (y >= (_rcSelection.bottom - c_iGrabRadius) && y <= (_rcSelection.bottom + c_iGrabRadius)
-            && x >= (_rcSelection.left - c_iGrabRadius) && x <= (_rcSelection.right + c_iGrabRadius))
-        {
-            dm |= DRAGM_SIZES;
-        }
-
-        if (x >= (_rcSelection.left - c_iGrabRadius) && x <= (_rcSelection.left + c_iGrabRadius)
-            && y >= (_rcSelection.top - c_iGrabRadius) && y <= (_rcSelection.bottom + c_iGrabRadius))
-        {
-            dm |= DRAGM_SIZEW;
-        }
-        else if (x >= (_rcSelection.right - c_iGrabRadius) && x <= (_rcSelection.right + c_iGrabRadius)
-            && y >= (_rcSelection.top - c_iGrabRadius) && y <= (_rcSelection.bottom + c_iGrabRadius))
-        {
-            dm |= DRAGM_SIZEE;
-        }
+        POINT ptCursor;
+        ptCursor.x = x;
+        ptCursor.y = y;
+        int dm = _ComputeDragMode(ptCursor, &_rcSelection);
 
         if (dm != _iToolMode)
         {
@@ -1807,7 +1869,11 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
             _UpdateCursor();
         }
     }
-    else if (_IsExtensionTool() && _pExtTool)
+    
+    // N.B. We perform a separate check for if the tool is an extension tool since clicking and
+    // dragging can set _fIsSelectingRegion, which means that an "else if" would result in this
+    // not executing in that case.
+    if (_IsExtensionTool())
     {
         HRESULT hr = _pExtTool->OnMouseMove(x, y, flags);
         if (hr == S_FALSE)
@@ -1827,11 +1893,14 @@ LRESULT CScreenshotEditorWindow::_OnMouseLButtonDown(int x, int y, WPARAM flags)
     GetCursorPos(&_ptSelectionOrigin);
     ScreenToClient(_hwnd, &_ptSelectionOrigin);
 
+    _rcDragSelectCur.left = _rcDragSelectCur.right = x;
+    _rcDragSelectCur.top = _rcDragSelectCur.bottom = y;
+
     if (_tool == SSET_DRAG)
     {
         _rcDragBegin = _rcSelection;
     }
-    else if (_IsExtensionTool() && _pExtTool)
+    else if (_IsExtensionTool())
     {
         HRESULT hr = _pExtTool->OnMouseLButtonDown(x, y, flags);
         if (hr == S_FALSE)
@@ -1861,7 +1930,7 @@ LRESULT CScreenshotEditorWindow::_OnMouseLButtonUp(int x, int y, WPARAM flags)
     _fIsSelectingRegion = false;
     _ptSelectionOrigin.x = _ptSelectionOrigin.y = 0;
 
-    if (_IsExtensionTool() && _pExtTool)
+    if (_IsExtensionTool())
     {
         HRESULT hr = _pExtTool->OnMouseLButtonUp(x, y, flags);
         if (hr == S_FALSE)
@@ -1887,7 +1956,7 @@ LRESULT CScreenshotEditorWindow::_OnMouseRButtonDown(int x, int y, WPARAM flags)
         _ptSelectionOrigin.x = 0;
         _ptSelectionOrigin.y = 0;
     }
-    else if (_IsExtensionTool() && _pExtTool)
+    else if (_IsExtensionTool())
     {
         HRESULT hr = _pExtTool->OnMouseRButtonDown(x, y, flags);
         if (hr == S_FALSE)
@@ -1901,7 +1970,7 @@ LRESULT CScreenshotEditorWindow::_OnMouseRButtonDown(int x, int y, WPARAM flags)
 
 LRESULT CScreenshotEditorWindow::_OnMouseRButtonUp(int x, int y, WPARAM flags)
 {
-    if (_IsExtensionTool() && _pExtTool)
+    if (_IsExtensionTool())
     {
         HRESULT hr = _pExtTool->OnMouseRButtonUp(x, y, flags);
         if (hr == S_FALSE)
@@ -1957,9 +2026,11 @@ HRESULT CScreenshotEditorWindow::_LoadExtensionTools()
                             if (SUCCEEDED(pExt->CreateTool(rgclsid[i], &pTool)))
                             {
                                 ExtensionToolInfo eti = { 0 };
+                                eti.pclsidTool = &rgclsid[i];
                                 eti.idTool = SSET_EXTENSIONFIRST + _vExtToolInfo.GetSize(); // Last member's index + 1
                                 ASSERT_EXPR(SUCCEEDED(pTool->GetToolName(&eti.pszToolName)));
                                 eti.pTool = pTool;
+                                eti.pTool->SetSite(this);
                                 DBGPRINT(TEXT("Created tool \"%s\" (" PRINT_GUID_PATTERN TEXT(") from extension \"%s\"")),
                                     eti.pszToolName,
                                     PRINT_GUID_PARAMS(rgclsid[i]),
@@ -2011,12 +2082,14 @@ HRESULT CScreenshotEditorWindow::_ChangeTool(ScreenshotEditorTool newTool)
     else if (newTool >= SSET_EXTENSIONFIRST)
     {
         IScreenshotEditorTool *pExtTool = nullptr;
+        const CLSID *pClsidTool = nullptr;
 
         for (int i = 0; i < _vExtToolInfo.GetSize(); i++)
         {
             if (_vExtToolInfo[i].idTool == (UINT)newTool)
             {
                 pExtTool = _vExtToolInfo[i].pTool;
+                pClsidTool = _vExtToolInfo[i].pclsidTool;
                 break;
             }
         }
@@ -2033,6 +2106,7 @@ HRESULT CScreenshotEditorWindow::_ChangeTool(ScreenshotEditorTool newTool)
 
         _tool = newTool;
         _pExtTool = pExtTool;
+        _pclsidTool = pClsidTool;
 
         // TODO: Extension tools will be able to report this as they need to.
         _pRenderer->SetMarqueeSelection(false);
@@ -2048,6 +2122,33 @@ HRESULT CScreenshotEditorWindow::_ChangeTool(ScreenshotEditorTool newTool)
     _pRenderer->UpdateSizingHelpersVisibility(_tool == SSET_DRAG);
     if (_pToolbar)
         _pToolbar->OnToolChanged(newTool);
+
+    return S_OK;
+}
+
+HRESULT CScreenshotEditorWindow::_GetToolCLSID(OUT const CLSID **pclsidOut)
+{
+    if (!pclsidOut)
+        return E_POINTER;
+
+    if (_tool == SSET_SELECT)
+    {
+        *pclsidOut = &CLSID_ScreenshotEditorToolSelect;
+    }
+    else if (_tool == SSET_DRAG)
+    {
+        *pclsidOut = &CLSID_ScreenshotEditorToolDrag;
+    }
+    else if (_IsExtensionTool())
+    {
+        *pclsidOut = _pclsidTool;
+    }
+    else
+    {
+        // Illegal tool.
+        *pclsidOut = nullptr;
+        return E_FAIL;
+    }
 
     return S_OK;
 }
@@ -2167,6 +2268,36 @@ void CScreenshotEditorWindow::_CancelSelection()
     _HideFloatingToolbar();
 }
 
+int CScreenshotEditorWindow::_ComputeDragMode(POINT ptCursor, RECT *prcDraggedObj)
+{
+    static constexpr int c_iGrabRadius = 4; // On both sides.
+    int dm = DRAGM_DRAG;
+
+    if (ptCursor.y >= (prcDraggedObj->top - c_iGrabRadius) && ptCursor.y <= (prcDraggedObj->top + c_iGrabRadius)
+        && ptCursor.x >= (prcDraggedObj->left - c_iGrabRadius) && ptCursor.x <= (prcDraggedObj->right + c_iGrabRadius))
+    {
+        dm |= DRAGM_SIZEN;
+    }
+    else if (ptCursor.y >= (prcDraggedObj->bottom - c_iGrabRadius) && ptCursor.y <= (prcDraggedObj->bottom + c_iGrabRadius)
+        && ptCursor.x >= (prcDraggedObj->left - c_iGrabRadius) && ptCursor.x <= (prcDraggedObj->right + c_iGrabRadius))
+    {
+        dm |= DRAGM_SIZES;
+    }
+
+    if (ptCursor.x >= (prcDraggedObj->left - c_iGrabRadius) && ptCursor.x <= (prcDraggedObj->left + c_iGrabRadius)
+        && ptCursor.y >= (prcDraggedObj->top - c_iGrabRadius) && ptCursor.y <= (prcDraggedObj->bottom + c_iGrabRadius))
+    {
+        dm |= DRAGM_SIZEW;
+    }
+    else if (ptCursor.x >= (prcDraggedObj->right - c_iGrabRadius) && ptCursor.x <= (prcDraggedObj->right + c_iGrabRadius)
+        && ptCursor.y >= (prcDraggedObj->top - c_iGrabRadius) && ptCursor.y <= (prcDraggedObj->bottom + c_iGrabRadius))
+    {
+        dm |= DRAGM_SIZEE;
+    }
+
+    return dm;
+}
+
 HRESULT CScreenshotEditorWindow::_RemoveObject(IScreenshotEditorObject *pObj)
 {
     // Search an object by its reference and remove it.
@@ -2240,6 +2371,7 @@ STDMETHODIMP CScreenshotEditorWindow::InsertObject(IScreenshotEditorObject *pObj
             _RemoveObject(pObj);
         }
 
+        InvalidateObject(pObj);
         hr = S_OK;
     }
     else if (SUCCEEDED(_RemoveObject(pObj)))
@@ -2268,6 +2400,20 @@ STDMETHODIMP CScreenshotEditorWindow::GetScreenshotContext(OUT IScreenshotContex
         return E_POINTER;
     *ppContext = _pScreenshotCtx;
     return S_OK;
+}
+
+STDMETHODIMP CScreenshotEditorWindow::GetCursorPosition(OUT POINT *pptCursor)
+{
+    if (!pptCursor)
+        return E_POINTER;
+    GetCursorPos(pptCursor);
+    ScreenToClient(_hwnd, pptCursor);
+    return S_OK;
+}
+
+STDMETHODIMP_(HWND) CScreenshotEditorWindow::GetEditorHWND()
+{
+    return GetHWND();
 }
 
 HRESULT CScreenshotEditorWindow::CopyToClipboardAndAccept()

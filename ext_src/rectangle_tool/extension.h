@@ -1,7 +1,7 @@
 #pragma once
 #include "pch.h"
 
-class CTextEditorExtension : public IScreenshotEditorExtension
+class CRectangleToolExtension : public IScreenshotEditorExtension
 {
 public:
     IMPLEMENT_IUNKNOWN;
@@ -16,7 +16,7 @@ public:
     STDMETHODIMP CreateTool(REFCLSID rclsidTool, IScreenshotEditorTool **ppToolOut) override;
     //@End IScreenshotEditorExtension
 
-    CTextEditorExtension()
+    CRectangleToolExtension()
         : _uRefCount(0)
     {
     }

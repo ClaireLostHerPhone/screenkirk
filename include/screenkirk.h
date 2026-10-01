@@ -55,6 +55,12 @@ DEFINE_GUID(IID_IScreenshotEditorObjectRendererGDI,
 // Editor objects and tools have the screenshot editor as their site.
 //
 
+//@Begin IScreenshotEditorObject::GetFlags() flags
+#define SSEOF_NODRAG (1 << 0)
+#define SSEOF_NOBACKBUFFER (1 << 1)
+#define SSEOF_MAYFLATTEN (1 << 2)
+//@End IScreenshotEditorObject::GetFlags() flags
+
 /**
  * Represents a screenshot document object.
  * 
@@ -67,18 +73,18 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorObject, IObjectWithSite, "{841C133A-9960
     STDMETHOD(QueryInterface)(REFIID riid, OUT void **ppvOut) PURE;
     STDMETHOD_(ULONG, AddRef)() PURE;
     STDMETHOD_(ULONG, Release)() PURE;
-    STDMETHOD(GetSite)(void *ppvSite) PURE;
-    STDMETHOD(SetSite)(void *pUnkSite) PURE;
+    STDMETHOD(SetSite)(IUnknown * pUnkSite) PURE;
+    STDMETHOD(GetSite)(REFIID riid, void **ppvSite) PURE;
+
+    /**
+     * Gets various flags used to control the interaction of the object.
+     */
+    STDMETHOD_(ULONG, GetFlags)() PURE;
 
     /**
      * Called when the object is inserted into the document.
      */
     STDMETHOD(InsertedIntoDocument)() PURE;
-
-    /**
-     * Gets a mask of tools which are capable of manipulating this object.
-     */
-    STDMETHOD(GetManipulationToolMask)() PURE; // TODO: How to go about the parameters here?
 
     /**
      * Gets the logical bounding rectangle for the object.
@@ -104,9 +110,14 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorObject, IObjectWithSite, "{841C133A-9960
     STDMETHOD_(BOOL, IsVisualDirty)() PURE;
 
     /**
+     * Changes the position and/or size of the object.
+     */
+    STDMETHOD(Move)(RECT *prcNew) PURE;
+
+    /**
      * Creates a renderer for this object.
      */
-    STDMETHOD(CreateRenderer)(const REFIID riid, OUT IScreenshotEditorObjectRenderer *pRendererOut) PURE;
+    STDMETHOD(CreateRenderer)(const REFIID riid, OUT IScreenshotEditorObjectRenderer **ppRendererOut) PURE;
 };
 // {841C133A-9960-44C3-9E95-C1349C731401}
 DEFINE_GUID(IID_IScreenshotEditorObject,
@@ -132,10 +143,24 @@ DECLARE_INTERFACE_IID_(IScreenshotEditor, IUnknown, "{0A573BD7-2C24-4602-A842-AC
      * Gets the context of the screenshot document.
      */
     STDMETHOD(GetScreenshotContext)(OUT IScreenshotContext **ppContextOut) PURE;
+
+    /**
+     * Gets the position of the mouse cursor relative to the document.
+     */
+    STDMETHOD(GetCursorPosition)(OUT POINT *pptCursor) PURE;
+
+    /**
+     * Gets the handle to the window containing the document editor.
+     */
+    STDMETHOD_(HWND, GetEditorHWND)() PURE;
 };
 // {0A573BD7-2C24-4602-A842-ACC82B12E1F1}
 DEFINE_GUID(IID_IScreenshotEditor,
     0xa573bd7, 0x2c24, 0x4602, 0xa8, 0x42, 0xac, 0xc8, 0x2b, 0x12, 0xe1, 0xf1);
+
+//@Begin IScreenshotEditorTool::GetFlags() flags
+#define SSETF_DRAWSELECTION (1 << 0)
+//@End IScreenshotEditorTool::GetFlags() flags
 
 /**
  * Represents a tool that can be used in the screenshot editor.
@@ -147,13 +172,18 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorTool, IObjectWithSite, "{1C093E9E-696B-4
     STDMETHOD(QueryInterface)(REFIID riid, OUT void **ppvOut) PURE;
     STDMETHOD_(ULONG, AddRef)() PURE;
     STDMETHOD_(ULONG, Release)() PURE;
-    STDMETHOD(GetSite)(REFIID riid, void **ppvSite) PURE;
     STDMETHOD(SetSite)(IUnknown *pUnkSite) PURE;
+    STDMETHOD(GetSite)(REFIID riid, void **ppvSite) PURE;
 
     /**
      * Called when the tool is selected.
      */
     STDMETHOD(SelectTool)() PURE;
+
+    /**
+     * Gets various flags used to control the interaction of the tool.
+     */
+    STDMETHOD_(ULONG, GetFlags)() PURE;
 
     /**
      * Gets the tool icon to be displayed in the toolbox.
@@ -209,16 +239,34 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorTool, IObjectWithSite, "{1C093E9E-696B-4
      * Called to allow the tool to apply a new cursor.
      */
     STDMETHOD(ApplyCursor)() PURE;
+
+    /**
+     * If the SSETF_DRAWSELECTION flag is set, called when the drawn selection is changed.
+     */
+    STDMETHOD(OnSelectionChange)(RECT *prcNew) PURE;
 };
 // {1C093E9E-696B-42CA-B4C3-67B793AF2D52}
 DEFINE_GUID(IID_IScreenshotEditorTool,
     0x1c093e9e, 0x696b, 0x42ca, 0xb4, 0xc3, 0x67, 0xb7, 0x93, 0xaf, 0x2d, 0x52);
+// {0FED4242-9EDB-431C-AAEE-34053600DC01}
+DEFINE_GUID(CLSID_ScreenshotEditorToolSelect,
+    0xfed4242, 0x9edb, 0x431c, 0xaa, 0xee, 0x34, 0x5, 0x36, 0x0, 0xdc, 0x1);
+// {0FED4242-9EDB-431C-AAEE-34053600DC02}
+DEFINE_GUID(CLSID_ScreenshotEditorToolDrag,
+    0xfed4242, 0x9edb, 0x431c, 0xaa, 0xee, 0x34, 0x5, 0x36, 0x0, 0xdc, 0x2);
+
+
+//@Begin IScreenshotEditorExtension::GetExtensionFlags() flags
+#define SSEEF_UNICODE (1 << 0)
+//@End IScreenshotEditorExtension::GetExtensionFlags() flags
 
 DECLARE_INTERFACE_IID_(IScreenshotEditorExtension, IUnknown, "{42D1141D-1455-47EA-A610-089D87173C8E}")
 {
     STDMETHOD(QueryInterface)(REFIID riid, OUT void **ppvOut) PURE;
     STDMETHOD_(ULONG, AddRef)() PURE;
     STDMETHOD_(ULONG, Release)() PURE;
+
+    STDMETHOD_(ULONG, GetExtensionFlags()) PURE;
 
 #ifdef _UNICODE
     /**

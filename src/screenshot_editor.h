@@ -32,6 +32,7 @@ enum DragMode
 struct ExtensionToolInfo
 {
     IScreenshotEditorTool *pTool;
+    const CLSID *pclsidTool;
     UINT idTool;
     const TCHAR *pszToolName;
 };
@@ -159,6 +160,7 @@ public:
     IScreenshotEditorObjectRenderer *_pRenderer;
     IScreenshotEditorObjectRendererGDI *_pRendererGdi;
     HBITMAP _hbmLayer;
+    RECT _rcLatestVisual;
 
 	CRenderObject()
 		: _pObj(nullptr)
@@ -166,6 +168,7 @@ public:
 		, _pRendererGdi(nullptr)
 		, _hbmLayer(nullptr)
 	{
+        ZeroMemory(&_rcLatestVisual, sizeof(_rcLatestVisual));
 	}
 
     inline bool HasGdiRenderer()
@@ -183,6 +186,7 @@ class CScreenshotEditorRendererGDI
     HBITMAP _hbmScreenshotLight;
     HBITMAP _hbmScreenshotDimmed;
     HBITMAP *_hbmMipmaps;
+    CRenderObject *_pRenderObjSel;
     RECT _rcSelection;
     RECT _rcSelectionVisual;
     CDynamicArray<CRenderObject> _vRenderObjs;
@@ -208,7 +212,8 @@ class CScreenshotEditorRendererGDI
 
     HRESULT _PaintSelectionRectangle(HDC hdc, RECT *prc, bool fUseMarquee);
     HRESULT _PaintSizingHelpers(HDC hdc, RECT *prc);
-    HRESULT _PaintRenderObjectVisualBuffer(HDC hdcRenderTarget, RECT *prcPaint, CRenderObject *pRenderObject);
+    HRESULT _PaintRenderObjectVisualBuffer(
+        HDC hdcRenderTarget, RECT *prcPaint, CRenderObject *pRenderObject, bool fUseBackbuffer);
     void _UpdateMarquee();
     HRESULT _StartSelectionMarqueeTimer();
     HRESULT _EndSelectionMarqueeTimer();
@@ -233,6 +238,7 @@ public:
         , _hbmScreenshotLight(pCtx->_hbmScreenshot)
 		, _hbmScreenshotDimmed(nullptr)
 		, _hbmMipmaps(nullptr)
+        , _pRenderObjSel(nullptr)
         , _cMipmaps(0)
         , _iSelMarqueeFrame(0)
         , _iZoom(1.0)
@@ -268,12 +274,15 @@ private:
     CScreenshotEditorRendererGDI *_pRenderer;
     CEditorToolbar *_pToolbar;
     CEditorFloatingToolbar *_pFloatingToolbar;
+    IScreenshotEditorObject *_pSelectedObject;
     CDynamicArray<IScreenshotEditorObject *> _vObjs;
     CDynamicArray<ExtensionToolInfo> _vExtToolInfo;
     POINT _ptSelectionOrigin;
     RECT _rcSelection;
+    RECT _rcDragSelectCur;
     RECT _rcDragBegin;
     ScreenshotEditorTool _tool;
+    const CLSID *_pclsidTool;
     IScreenshotEditorTool *_pExtTool; // The current extension tool, if any.
     int _iToolMode;
     bool _fEnumeratedWindows;
@@ -283,7 +292,7 @@ private:
 protected:
     inline bool _IsExtensionTool()
     {
-        return _tool >= SSET_EXTENSIONFIRST;
+        return _tool >= SSET_EXTENSIONFIRST && _pExtTool;
     }
 
     LRESULT v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override;
@@ -301,11 +310,13 @@ protected:
     HRESULT _LoadExtensionTools();
 
     HRESULT _ChangeTool(ScreenshotEditorTool newTool);
+    HRESULT _GetToolCLSID(OUT const CLSID **pclsidOut);
     HRESULT _EnsureToolbar();
     void _ShowFloatingToolbar();
     void _HideFloatingToolbar();
     void _UpdateCursor();
     void _CancelSelection();
+    int _ComputeDragMode(POINT ptCursor, RECT *prcDraggedObj);
     HRESULT _RemoveObject(IScreenshotEditorObject *pObj);
 
     /**
@@ -342,9 +353,11 @@ public:
     //@End IUnknown
 
     //@Begin IScreenshotEditor
-    STDMETHODIMP InsertObject(IScreenshotEditorObject *pObj);
-    STDMETHODIMP InvalidateObject(IScreenshotEditorObject *pObj);
-    STDMETHODIMP GetScreenshotContext(OUT IScreenshotContext **ppContext);
+    STDMETHODIMP InsertObject(IScreenshotEditorObject *pObj) override;
+    STDMETHODIMP InvalidateObject(IScreenshotEditorObject *pObj) override;
+    STDMETHODIMP GetScreenshotContext(OUT IScreenshotContext **ppContext) override;
+    STDMETHODIMP GetCursorPosition(OUT POINT *pptCursor) override;
+    STDMETHODIMP_(HWND) GetEditorHWND() override;
     //@End IScreenshotEditor
 
 	CScreenshotEditorWindow()
@@ -352,7 +365,9 @@ public:
 		, _pRenderer(nullptr)
         , _pToolbar(nullptr)
 		, _pFloatingToolbar(nullptr)
+        , _pSelectedObject(nullptr)
         , _tool(SSET_SELECT)
+        , _pclsidTool(nullptr)
 		, _pExtTool(nullptr)
         , _iToolMode(0)
         , _fEnumeratedWindows(false)

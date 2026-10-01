@@ -1,0 +1,4 @@
+LIBRARY "rectangle_tool"
+EXPORTS
+	DllGetClassObject PRIVATE
+	DllCanUnloadNow   PRIVATE

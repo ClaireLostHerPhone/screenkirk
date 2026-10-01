@@ -51,6 +51,11 @@ STDMETHODIMP CTextEditorTool::SelectTool()
     return S_OK;
 }
 
+STDMETHODIMP_(ULONG) CTextEditorTool::GetFlags()
+{
+    return 0;
+}
+
 STDMETHODIMP_(HICON) CTextEditorTool::GetToolIcon()
 {
     return nullptr;
@@ -102,4 +107,9 @@ STDMETHODIMP CTextEditorTool::ApplyCursor()
 {
     SetCursor(LoadCursor(nullptr, IDC_IBEAM));
     return S_OK;
+}
+
+STDMETHODIMP CTextEditorTool::OnSelectionChange(RECT *prcNew)
+{
+    return E_NOTIMPL;
 }
