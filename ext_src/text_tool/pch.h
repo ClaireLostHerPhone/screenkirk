@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <tchar.h>
 #include "screenkirk.h"
+#include "portable.h"
 
 #define RECTWIDTH(rc) ((rc).right - (rc).left)
 #define RECTHEIGHT(rc) ((rc).bottom - (rc).top)
@@ -28,17 +29,17 @@ inline HRESULT StaticCoTaskMemStringAlloc(const TCHAR (&sz)[N], TCHAR **pszOut)
 
 #define IMPLEMENT_IUNKNOWN                                                               \
 protected:                                                                               \
-    ULONG _uRefCount;                                                                     \
+    ULONG _uRefCount;                                                                    \
 public:                                                                                  \
     STDMETHODIMP QueryInterface(const IID &riid, void **ppvOut) override;                \
     STDMETHODIMP_(ULONG) AddRef() override                                               \
     {                                                                                    \
-        InterlockedIncrement(&_uRefCount);                                               \
+        _uRefCount++;                                                                    \
         return _uRefCount;                                                               \
     }                                                                                    \
     STDMETHODIMP_(ULONG) Release() override                                              \
     {                                                                                    \
-        InterlockedDecrement(&_uRefCount);                                               \
+        _uRefCount--;                                                                    \
         if (_uRefCount == 0)                                                             \
         {                                                                                \
             delete this;                                                                 \

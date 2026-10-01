@@ -63,7 +63,7 @@ STDMETHODIMP CExtensionClassFactory::LockServer(BOOL fLock)
 // DllGetClassObject & DllMain
 //
 
-__declspec(dllexport) extern "C" HRESULT DllGetClassObject(REFCLSID rclsid, REFIID riid, void **ppv)
+STDAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, void **ppv)
 {
     if (nullptr == &rclsid || nullptr == &riid || !ppv)
         return E_POINTER;
@@ -81,7 +81,7 @@ __declspec(dllexport) extern "C" HRESULT DllGetClassObject(REFCLSID rclsid, REFI
     return CLASS_E_CLASSNOTAVAILABLE;
 }
 
-__declspec(dllexport) extern "C" HRESULT DllCanUnloadNow(void)
+STDAPI DllCanUnloadNow()
 {
     return S_OK;
 }
