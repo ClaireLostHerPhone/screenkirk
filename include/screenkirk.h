@@ -248,12 +248,6 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorTool, IObjectWithSite, "{1C093E9E-696B-4
 // {1C093E9E-696B-42CA-B4C3-67B793AF2D52}
 DEFINE_GUID(IID_IScreenshotEditorTool,
     0x1c093e9e, 0x696b, 0x42ca, 0xb4, 0xc3, 0x67, 0xb7, 0x93, 0xaf, 0x2d, 0x52);
-// {0FED4242-9EDB-431C-AAEE-34053600DC01}
-DEFINE_GUID(CLSID_ScreenshotEditorToolSelect,
-    0xfed4242, 0x9edb, 0x431c, 0xaa, 0xee, 0x34, 0x5, 0x36, 0x0, 0xdc, 0x1);
-// {0FED4242-9EDB-431C-AAEE-34053600DC02}
-DEFINE_GUID(CLSID_ScreenshotEditorToolDrag,
-    0xfed4242, 0x9edb, 0x431c, 0xaa, 0xee, 0x34, 0x5, 0x36, 0x0, 0xdc, 0x2);
 
 
 //@Begin IScreenshotEditorExtension::GetExtensionFlags() flags

@@ -32,7 +32,6 @@ enum DragMode
 struct ExtensionToolInfo
 {
     IScreenshotEditorTool *pTool;
-    const CLSID *pclsidTool;
     UINT idTool;
     const TCHAR *pszToolName;
 };
@@ -282,7 +281,6 @@ private:
     RECT _rcDragSelectCur;
     RECT _rcDragBegin;
     ScreenshotEditorTool _tool;
-    const CLSID *_pclsidTool;
     IScreenshotEditorTool *_pExtTool; // The current extension tool, if any.
     int _iToolMode;
     bool _fEnumeratedWindows;
@@ -310,7 +308,6 @@ protected:
     HRESULT _LoadExtensionTools();
 
     HRESULT _ChangeTool(ScreenshotEditorTool newTool);
-    HRESULT _GetToolCLSID(OUT const CLSID **pclsidOut);
     HRESULT _EnsureToolbar();
     void _ShowFloatingToolbar();
     void _HideFloatingToolbar();
@@ -367,7 +364,6 @@ public:
 		, _pFloatingToolbar(nullptr)
         , _pSelectedObject(nullptr)
         , _tool(SSET_SELECT)
-        , _pclsidTool(nullptr)
 		, _pExtTool(nullptr)
         , _iToolMode(0)
         , _fEnumeratedWindows(false)

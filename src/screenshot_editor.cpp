@@ -2026,7 +2026,6 @@ HRESULT CScreenshotEditorWindow::_LoadExtensionTools()
                             if (SUCCEEDED(pExt->CreateTool(rgclsid[i], &pTool)))
                             {
                                 ExtensionToolInfo eti = { 0 };
-                                eti.pclsidTool = &rgclsid[i];
                                 eti.idTool = SSET_EXTENSIONFIRST + _vExtToolInfo.GetSize(); // Last member's index + 1
                                 ASSERT_EXPR(SUCCEEDED(pTool->GetToolName(&eti.pszToolName)));
                                 eti.pTool = pTool;
@@ -2082,14 +2081,12 @@ HRESULT CScreenshotEditorWindow::_ChangeTool(ScreenshotEditorTool newTool)
     else if (newTool >= SSET_EXTENSIONFIRST)
     {
         IScreenshotEditorTool *pExtTool = nullptr;
-        const CLSID *pClsidTool = nullptr;
 
         for (int i = 0; i < _vExtToolInfo.GetSize(); i++)
         {
             if (_vExtToolInfo[i].idTool == (UINT)newTool)
             {
                 pExtTool = _vExtToolInfo[i].pTool;
-                pClsidTool = _vExtToolInfo[i].pclsidTool;
                 break;
             }
         }
@@ -2106,7 +2103,6 @@ HRESULT CScreenshotEditorWindow::_ChangeTool(ScreenshotEditorTool newTool)
 
         _tool = newTool;
         _pExtTool = pExtTool;
-        _pclsidTool = pClsidTool;
 
         // TODO: Extension tools will be able to report this as they need to.
         _pRenderer->SetMarqueeSelection(false);
@@ -2122,33 +2118,6 @@ HRESULT CScreenshotEditorWindow::_ChangeTool(ScreenshotEditorTool newTool)
     _pRenderer->UpdateSizingHelpersVisibility(_tool == SSET_DRAG);
     if (_pToolbar)
         _pToolbar->OnToolChanged(newTool);
-
-    return S_OK;
-}
-
-HRESULT CScreenshotEditorWindow::_GetToolCLSID(OUT const CLSID **pclsidOut)
-{
-    if (!pclsidOut)
-        return E_POINTER;
-
-    if (_tool == SSET_SELECT)
-    {
-        *pclsidOut = &CLSID_ScreenshotEditorToolSelect;
-    }
-    else if (_tool == SSET_DRAG)
-    {
-        *pclsidOut = &CLSID_ScreenshotEditorToolDrag;
-    }
-    else if (_IsExtensionTool())
-    {
-        *pclsidOut = _pclsidTool;
-    }
-    else
-    {
-        // Illegal tool.
-        *pclsidOut = nullptr;
-        return E_FAIL;
-    }
 
     return S_OK;
 }
