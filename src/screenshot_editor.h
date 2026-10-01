@@ -37,25 +37,61 @@ struct ExtensionToolInfo
 };
 
 //
-// Editor floating toolbar (used in fullscreen mode)
+// The main toolbar, used by both the floating toolbar and in the windowed editor.
 //
-class CEditorFloatingToolbar : public CWindow<CEditorFloatingToolbar>
+class CEditorToolbar : public CWindow<CEditorToolbar>
 {
-    DEFINE_WINDOW_CLASS("screenkirk_EditorFloatingToolbar");
+    DEFINE_WINDOW_CLASS("screenkirk_EditorToolbar");
 
 private:
     class CScreenshotEditorWindow *_pEditor;
-    HWND _hwndToolbarTools;
-    HWND _hwndToolbarActions;
+    HWND _hwndToolbar;
 
 protected:
     LRESULT v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override;
-
-    HRESULT _OnCreate();
+    LRESULT _OnCreate(CREATESTRUCT *pcs);
     LRESULT _OnCommand(WPARAM wParam, LPARAM lParam);
     LRESULT _OnNotify(NMHDR *pnmh, WPARAM wParam, bool *pfHandled);
 
     HRESULT _UnselectTool();
+
+public:
+    static HRESULT RegisterWindowClass();
+
+    /**
+     * Creates the editor toolbar.
+     */
+    static CEditorToolbar *Create(class CScreenshotEditorWindow *pEditor, DWORD dwExStyle, DWORD dwStyle, int x, int y, int cx, int cy, HWND hwndParent);
+
+    CEditorToolbar()
+        : _pEditor(nullptr)
+        , _hwndToolbar(nullptr)
+    {
+    }
+
+    inline class CScreenshotEditorWindow *GetOwnerEditor() { return _pEditor; }
+
+    HRESULT SelectOrdinalTool(int idx);
+    HRESULT OnToolChanged(ScreenshotEditorTool toolNew);
+};
+
+//
+// Floating toolbar action strip
+//
+class CEditorActionsStrip : public CWindow<CEditorActionsStrip>
+{
+    DEFINE_WINDOW_CLASS("screenkirk_EditorActionsStrip");
+
+private:
+    class CScreenshotEditorWindow *_pEditor;
+    HWND _hwndActions;
+
+protected:
+    LRESULT v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override;
+
+    LRESULT _OnCreate(CREATESTRUCT *pcs);
+    LRESULT _OnCommand(WPARAM wParam, LPARAM lParam);
+    LRESULT _OnNotify(NMHDR *pnmh, WPARAM wParam, bool *pfHandled);
 
 public:
     enum Command
@@ -73,17 +109,47 @@ public:
     /**
      * Creates the floating toolbar.
      */
-    static CEditorFloatingToolbar *Create(class CScreenshotEditorWindow *pEditor);
+    static CEditorActionsStrip *Create(class CScreenshotEditorWindow *pEditor, DWORD dwExStyle, DWORD dwStyle, int x, int y, int cx, int cy, HWND hwndParent);
+
+    CEditorActionsStrip()
+        : _pEditor(nullptr)
+        , _hwndActions(nullptr)
+    {
+    }
+};
+
+//
+// Editor floating toolbar (used in fullscreen mode)
+//
+class CEditorFloatingToolbar : public CWindow<CEditorFloatingToolbar>
+{
+    DEFINE_WINDOW_CLASS("screenkirk_EditorFloatingToolbar");
+
+private:
+    class CScreenshotEditorWindow *_pEditor;
+    CEditorToolbar *_pToolbarTools;
+    CEditorActionsStrip *_pActionStrip;
+
+protected:
+    LRESULT v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override;
+
+    HRESULT _OnCreate();
+    LRESULT _OnCommand(WPARAM wParam, LPARAM lParam);
+
+public:
+    static HRESULT RegisterWindowClass();
+
+    /**
+     * Creates the floating toolbar.
+     */
+    static CEditorFloatingToolbar *Create(CEditorToolbar *pToolbar);
 
 	CEditorFloatingToolbar()
 		: _pEditor(nullptr)
-		, _hwndToolbarTools(nullptr)
-		, _hwndToolbarActions(nullptr)
+		, _pToolbarTools(nullptr)
+		, _pActionStrip(nullptr)
 	{
 	}
-
-    HRESULT SelectOrdinalTool(int idx);
-    HRESULT OnToolChanged(ScreenshotEditorTool toolNew);
 };
 
 class CRenderObject
@@ -200,6 +266,7 @@ class CScreenshotEditorWindow
 private:
     CScreenshotContext *_pScreenshotCtx;
     CScreenshotEditorRendererGDI *_pRenderer;
+    CEditorToolbar *_pToolbar;
     CEditorFloatingToolbar *_pFloatingToolbar;
     CDynamicArray<IScreenshotEditorObject *> _vObjs;
     CDynamicArray<ExtensionToolInfo> _vExtToolInfo;
@@ -234,6 +301,7 @@ protected:
     HRESULT _LoadExtensionTools();
 
     HRESULT _ChangeTool(ScreenshotEditorTool newTool);
+    HRESULT _EnsureToolbar();
     void _ShowFloatingToolbar();
     void _HideFloatingToolbar();
     void _UpdateCursor();
@@ -282,6 +350,7 @@ public:
 	CScreenshotEditorWindow()
 		: _pScreenshotCtx(nullptr)
 		, _pRenderer(nullptr)
+        , _pToolbar(nullptr)
 		, _pFloatingToolbar(nullptr)
         , _tool(SSET_SELECT)
 		, _pExtTool(nullptr)

@@ -8,6 +8,473 @@
 #include <assert.h>
 
 //
+// CEditorToolbar
+//
+
+LRESULT CEditorToolbar::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+    switch (uMsg)
+    {
+        case WM_CREATE:
+        {
+            CREATESTRUCT *pcs = (CREATESTRUCT *)lParam;
+            _pEditor = (CScreenshotEditorWindow *)pcs->lpCreateParams;
+            return _OnCreate(pcs);
+        }
+
+        case WM_SIZE:
+        {
+            int iWidth = LOWORD(lParam);
+            int iHeight = HIWORD(lParam);
+
+            SetWindowPos(_hwndToolbar, nullptr, 0, 0, iWidth, iHeight, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+
+            break;
+        }
+
+        // Key input should pass through to the editor if the toolbar is
+        // activated.
+        case WM_KEYDOWN:
+        case WM_KEYUP:
+        {
+            PostMessage(_pEditor->GetHWND(), uMsg, wParam, lParam);
+            break;
+        }
+
+        case WM_COMMAND:
+        {
+            return _OnCommand(wParam, lParam);
+        }
+
+        case WM_NOTIFY:
+        {
+            NMHDR *pnmh = (NMHDR *)lParam;
+            bool fHandled = false;
+            LRESULT lr = _OnNotify(pnmh, wParam, &fHandled);
+            if (fHandled)
+                return lr;
+        }
+
+        default:
+        {
+            if (_hwndToolbar && uMsg >= WM_USER)
+            {
+                return SendMessage(_hwndToolbar, uMsg, wParam, lParam);
+            }
+        }
+    }
+
+    return DefWindowProc(hwnd, uMsg, wParam, lParam);
+}
+
+LRESULT CEditorToolbar::_OnCreate(CREATESTRUCT *pcs)
+{
+    _hwndToolbar = CreateWindowEx(
+        0,
+        TOOLBARCLASSNAME,
+        nullptr,
+        WS_VISIBLE | WS_CHILD | TBSTYLE_WRAPABLE | TBSTYLE_TOOLTIPS | TBSTYLE_LIST | TBSTYLE_FLAT | CCS_TOP,
+        0, 0,
+        0, 0,
+        _hwnd,
+        nullptr,
+        g_hinst,
+        nullptr
+    );
+
+    if (!_hwndToolbar)
+    {
+        return -1;
+    }
+
+    SendMessage(_hwndToolbar, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
+
+    int cExtTools = _pEditor->GetExtensionToolCount();
+    int cSuccessfulTools = 0;
+    TBBUTTON *rgtbButtons = new TBBUTTON[2 + cExtTools];
+    DBGPRINT(TEXT("Extension tool count: %d"), cExtTools);
+    ZeroMemory(rgtbButtons, sizeof(TBBUTTON) * (2 + cExtTools));
+    {
+        int &i = cSuccessfulTools;
+
+        // This bitmap loading routine is bad (I want to load from icons anyway), but it
+        // works for now.
+        HBITMAP hbmSelect = (HBITMAP)LoadImage(g_hinst, MAKEINTRESOURCE(IDB_TOOLSELECT), IMAGE_BITMAP, 16, 16, LR_DEFAULTCOLOR);
+        HBITMAP hbmMove = (HBITMAP)LoadImage(g_hinst, MAKEINTRESOURCE(IDB_TOOLMOVE), IMAGE_BITMAP, 16, 16, LR_DEFAULTCOLOR);
+
+        TBADDBITMAP ab;
+        ab.hInst = nullptr;
+        ab.nID = (UINT_PTR)hbmSelect;
+        SendMessage(_hwndToolbar, TB_ADDBITMAP, 1, (LPARAM)&ab);
+        ab.nID = (UINT_PTR)hbmMove;
+        SendMessage(_hwndToolbar, TB_ADDBITMAP, 1, (LPARAM)&ab);
+
+        rgtbButtons[i].idCommand = CEditorActionsStrip::IDM_TOOLFIRST + SSET_SELECT;
+        rgtbButtons[i].dwData = (INT_PTR)TEXT("Select");
+        rgtbButtons[i].fsState = TBSTATE_ENABLED;
+        rgtbButtons[i].fsStyle = BTNS_CHECK;
+        rgtbButtons[i].iBitmap = 0;
+
+        i++;
+        rgtbButtons[i].idCommand = CEditorActionsStrip::IDM_TOOLFIRST + SSET_DRAG;
+        rgtbButtons[i].dwData = (INT_PTR)TEXT("Move");
+        rgtbButtons[i].fsState = TBSTATE_ENABLED;
+        rgtbButtons[i].fsStyle = BTNS_CHECK;
+        rgtbButtons[i].iBitmap = 1;
+
+        for (int j = 0; j < _pEditor->GetExtensionToolCount(); j++)
+        {
+            ExtensionToolInfo eti;
+            if (SUCCEEDED(_pEditor->GetExtensionToolInfo(j, &eti)))
+            {
+                i++;
+                rgtbButtons[i].idCommand = CEditorActionsStrip::IDM_TOOLFIRST + eti.idTool;
+                rgtbButtons[i].dwData = (INT_PTR)eti.pszToolName;
+                rgtbButtons[i].fsState = TBSTATE_ENABLED;
+                rgtbButtons[i].fsStyle = BTNS_CHECK;
+                rgtbButtons[i].iBitmap = 1; // TODO: What to do here?
+            }
+            else
+            {
+                DBGPRINT(TEXT("Failed to get extension tool info."));
+            }
+        }
+    }
+
+    SendMessage(_hwndToolbar, TB_ADDBUTTONS, cSuccessfulTools + 1, (LPARAM)rgtbButtons);
+
+    delete[] rgtbButtons;
+
+    return DefWindowProc(_hwnd, WM_CREATE, 0, (LPARAM)pcs);
+}
+
+LRESULT CEditorToolbar::_OnCommand(WPARAM wParam, LPARAM lParam)
+{
+    HWND hwndEditor = _pEditor->GetHWND();
+
+    if (LOWORD(wParam) >= CEditorActionsStrip::IDM_TOOLFIRST)
+    {
+        SendMessage(hwndEditor, CScreenshotEditorWindow::WM_SSE_CHANGETOOL, LOWORD(wParam) - CEditorActionsStrip::IDM_TOOLFIRST, 0);
+    }
+
+    return 0;
+}
+
+LRESULT CEditorToolbar::_OnNotify(NMHDR *pnmh, WPARAM wParam, bool *pfHandled)
+{
+    if (pnmh->code == TTN_GETDISPINFO)
+    {
+        NMTTDISPINFO *pDispInfo = (NMTTDISPINFO *)pnmh;
+
+        TBBUTTONINFO tbbi = { sizeof(tbbi) };
+        tbbi.dwMask = TBIF_LPARAM;
+        if (SendMessage(_hwndToolbar, TB_GETBUTTONINFO, pDispInfo->hdr.idFrom, (LPARAM)&tbbi) > -1)
+        {
+            pDispInfo->lpszText = (TCHAR *)tbbi.lParam;
+            return 0;
+        }
+    }
+
+    return 0;
+}
+
+HRESULT CEditorToolbar::_UnselectTool()
+{
+    for (int i = 0, j = SendMessage(_hwndToolbar, TB_BUTTONCOUNT, 0, 0); i < j; i++)
+    {
+        TBBUTTON tbb = { 0 };
+        SendMessage(_hwndToolbar, TB_GETBUTTON, i, (LPARAM)&tbb);
+
+        if (tbb.fsState & TBSTATE_CHECKED)
+        {
+            SendMessage(_hwndToolbar, TB_CHECKBUTTON, tbb.idCommand, FALSE);
+        }
+    }
+
+    return S_OK;
+}
+
+// static
+HRESULT CEditorToolbar::RegisterWindowClass()
+{
+    WNDCLASS cls = { 0 };
+    cls.hInstance = g_hinst;
+    cls.hbrBackground = nullptr;
+    cls.hCursor = nullptr;
+    cls.hIcon = nullptr;
+
+    return CWindow::RegisterWindowClass(&cls);
+}
+
+// static
+CEditorToolbar *CEditorToolbar::Create(CScreenshotEditorWindow *pEditor, DWORD dwExStyle, DWORD dwStyle, int x, int y, int cx, int cy, HWND hwndParent)
+{
+    if (FAILED(RegisterWindowClass()))
+    {
+        return nullptr;
+    }
+
+    CEditorToolbar *pWnd = CWindow::Create(
+        dwExStyle,
+        nullptr,
+        dwStyle,
+        x, y,
+        cx, cy,
+        hwndParent,
+        nullptr,
+        g_hinst,
+        pEditor
+    );
+
+    return pWnd;
+}
+
+HRESULT CEditorToolbar::SelectOrdinalTool(int idx)
+{
+    int cButtons = SendMessage(_hwndToolbar, TB_BUTTONCOUNT, 0, 0);
+
+    if (idx <= cButtons)
+    {
+        TBBUTTON tbb;
+        SendMessage(_hwndToolbar, TB_GETBUTTON, idx - 1, (LPARAM)&tbb);
+
+        SendMessage(_pEditor->GetHWND(), CScreenshotEditorWindow::WM_SSE_CHANGETOOL, tbb.idCommand - CEditorActionsStrip::IDM_TOOLFIRST, 0);
+        return S_OK;
+    }
+
+    return E_BOUNDS;
+}
+
+HRESULT CEditorToolbar::OnToolChanged(ScreenshotEditorTool toolNew)
+{
+    ASSERT_EXPR(SUCCEEDED(_UnselectTool()));
+
+    // If the requested tool has no toolbar item, then this will supposedly fail.
+    ASSERT_EXPR(SendMessage(_hwndToolbar, TB_CHECKBUTTON, toolNew + CEditorActionsStrip::IDM_TOOLFIRST, TRUE));
+
+    return S_OK;
+}
+
+//
+// CEditorActionsStrip
+//
+
+LRESULT CEditorActionsStrip::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+    switch (uMsg)
+    {
+        case WM_CREATE:
+        {
+            CREATESTRUCT *pcs = (CREATESTRUCT *)lParam;
+            _pEditor = (CScreenshotEditorWindow *)pcs->lpCreateParams;
+            return _OnCreate(pcs);
+        }
+
+        case WM_SIZE:
+        {
+            int iWidth = LOWORD(lParam);
+            int iHeight = HIWORD(lParam);
+
+            SetWindowPos(_hwndActions, nullptr, 0, 0, iWidth, iHeight, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+
+            break;
+        }
+
+        // Key input should pass through to the editor if the floating toolbar is
+        // activated.
+        case WM_KEYDOWN:
+        case WM_KEYUP:
+        {
+            PostMessage(_pEditor->GetHWND(), uMsg, wParam, lParam);
+            break;
+        }
+
+        case WM_COMMAND:
+        {
+            return _OnCommand(wParam, lParam);
+        }
+
+        case WM_NOTIFY:
+        {
+            NMHDR *pnmh = (NMHDR *)lParam;
+            bool fHandled = false;
+            LRESULT lr = _OnNotify(pnmh, wParam, &fHandled);
+            if (fHandled)
+                return lr;
+        }
+
+        default:
+        {
+            if (_hwndActions && uMsg >= WM_USER)
+            {
+                return SendMessage(_hwndActions, uMsg, wParam, lParam);
+            }
+        }
+    }
+
+    return DefWindowProc(hwnd, uMsg, wParam, lParam);
+}
+
+LRESULT CEditorActionsStrip::_OnCreate(CREATESTRUCT *pcs)
+{
+    _hwndActions = CreateWindowEx(
+        0,
+        TOOLBARCLASSNAME,
+        nullptr,
+        WS_VISIBLE | WS_CHILD | TBSTYLE_LIST | TBSTYLE_FLAT | CCS_NOPARENTALIGN | CCS_NOMOVEY | CCS_NORESIZE,
+        0, 0,
+        0, 0,
+        _hwnd,
+        nullptr,
+        g_hinst,
+        nullptr
+    );
+
+    if (!_hwndActions)
+    {
+        return E_FAIL;
+    }
+
+    SendMessage(_hwndActions, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
+    SendMessage(_hwndActions, TB_SETEXTENDEDSTYLE, 0, TBSTYLE_EX_DOUBLEBUFFER | TBSTYLE_EX_DRAWDDARROWS);
+
+    TBBUTTON rgtbButTools[4] = { 0 };
+    {
+        // Eventually, I want to make this load icons from alternative sources (perhaps
+        // shell32 or imageres) as the operating system supports it. This is fine for now
+        // though.
+        TBADDBITMAP ab;
+        ab.hInst = HINST_COMMCTRL;
+        ab.nID = IDB_STD_SMALL_COLOR;
+        SendMessage(_hwndActions, TB_ADDBITMAP, 15, (LPARAM)&ab);
+
+        int i = 0;
+
+        rgtbButTools[i].idCommand = IDM_OPENINEXTERNALEDITOR;
+        rgtbButTools[i].iString = (INT_PTR)TEXT("Open in...");
+        rgtbButTools[i].fsState = TBSTATE_ENABLED;
+        rgtbButTools[i].fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_DROPDOWN;
+        rgtbButTools[i].iBitmap = STD_FILENEW; // Temporary icon.
+
+        i++;
+        rgtbButTools[i].idCommand = IDM_COPY;
+        rgtbButTools[i].iString = (INT_PTR)TEXT("Copy");
+        rgtbButTools[i].fsState = TBSTATE_ENABLED;
+        rgtbButTools[i].fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE;
+        rgtbButTools[i].iBitmap = STD_COPY;
+
+        i++;
+        rgtbButTools[i].idCommand = IDM_SAVE;
+        rgtbButTools[i].iString = (INT_PTR)TEXT("Save");
+        rgtbButTools[i].fsState = TBSTATE_ENABLED;
+        rgtbButTools[i].fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE;
+        rgtbButTools[i].iBitmap = STD_FILESAVE;
+
+        i++;
+        rgtbButTools[i].idCommand = IDM_DISCARD;
+        rgtbButTools[i].iString = (INT_PTR)TEXT("Discard");
+        rgtbButTools[i].fsState = TBSTATE_ENABLED;
+        rgtbButTools[i].fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE;
+        rgtbButTools[i].iBitmap = STD_DELETE;
+    }
+
+    SendMessage(_hwndActions, TB_ADDBUTTONS, ARRAYSIZE(rgtbButTools), (LPARAM)&rgtbButTools);
+
+    return DefWindowProc(_hwnd, WM_CREATE, 0, (LPARAM)pcs);
+}
+
+LRESULT CEditorActionsStrip::_OnCommand(WPARAM wParam, LPARAM lParam)
+{
+    HWND hwndEditor = _pEditor->GetHWND();
+
+    switch (LOWORD(wParam))
+    {
+        case IDM_DISCARD:
+        {
+            DestroyWindow(hwndEditor);
+            break;
+        }
+
+        case IDM_COPY:
+        {
+            SendMessage(hwndEditor, CScreenshotEditorWindow::WM_SSE_COPYTOCLIPBOARD, 0, 0);
+            break;
+        }
+
+        case IDM_SAVE:
+        {
+            SendMessage(hwndEditor, CScreenshotEditorWindow::WM_SSE_SAVEIMAGE, 0, 0);
+            break;
+        }
+
+        case IDM_OPENINEXTERNALEDITOR:
+        {
+            MessageBox(hwndEditor, TEXT("This operation has yet to be implemented."), TEXT("Unimplemented!"), MB_OK | MB_ICONERROR);
+            break;
+        }
+    }
+
+    return 0;
+}
+
+LRESULT CEditorActionsStrip::_OnNotify(NMHDR *pnmh, WPARAM wParam, bool *pfHandled)
+{
+    if (pnmh->code == NM_CUSTOMDRAW && pnmh->hwndFrom == _hwndActions)
+    {
+        NMTBCUSTOMDRAW *ptbcd = (NMTBCUSTOMDRAW *)pnmh;
+
+        switch (ptbcd->nmcd.dwDrawStage)
+        {
+            case CDDS_PREPAINT:
+            {
+                RECT rc;
+                GetClientRect(pnmh->hwndFrom, &rc);
+                FillRect(ptbcd->nmcd.hdc, &rc, GetSysColorBrush(COLOR_BTNFACE));
+                *pfHandled = true;
+                return CDRF_DODEFAULT;
+            }
+        }
+    }
+
+    return 0;
+}
+
+// static
+HRESULT CEditorActionsStrip::RegisterWindowClass()
+{
+    WNDCLASS cls = { 0 };
+    cls.hInstance = g_hinst;
+    cls.hbrBackground = nullptr;
+    cls.hCursor = nullptr;
+    cls.hIcon = nullptr;
+
+    return CWindow::RegisterWindowClass(&cls);
+}
+
+// static
+CEditorActionsStrip *CEditorActionsStrip::Create(CScreenshotEditorWindow *pEditor, DWORD dwExStyle, DWORD dwStyle, int x, int y, int cx, int cy, HWND hwndParent)
+{
+    if (FAILED(RegisterWindowClass()))
+    {
+        return nullptr;
+    }
+
+    CEditorActionsStrip *pWnd = CWindow::Create(
+        dwExStyle,
+        nullptr,
+        dwStyle,
+        x, y,
+        cx, cy,
+        hwndParent,
+        nullptr,
+        g_hinst,
+        pEditor
+    );
+
+    return pWnd;
+}
+
+//
 // CEditorFloatingToolbar
 //
 
@@ -18,7 +485,8 @@ LRESULT CEditorFloatingToolbar::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
         case WM_CREATE:
         {
             CREATESTRUCT *pcs = (CREATESTRUCT *)lParam;
-            _pEditor = (CScreenshotEditorWindow *)pcs->lpCreateParams;
+            _pToolbarTools = (CEditorToolbar *)pcs->lpCreateParams;
+            _pEditor = _pToolbarTools->GetOwnerEditor();
 
             if (FAILED(_OnCreate()))
             {
@@ -52,21 +520,12 @@ LRESULT CEditorFloatingToolbar::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
         case WM_KEYUP:
         {
             PostMessage(_pEditor->GetHWND(), uMsg, wParam, lParam);
-            // [[fallthrough]]
+            break;
         }
 
         case WM_COMMAND:
         {
             return _OnCommand(wParam, lParam);
-        }
-
-        case WM_NOTIFY:
-        {
-            NMHDR *pnmh = (NMHDR *)lParam;
-            bool fHandled = false;
-            LRESULT lr = _OnNotify(pnmh, wParam, &fHandled);
-            if (fHandled)
-                return lr;
         }
     }
 
@@ -78,71 +537,12 @@ HRESULT CEditorFloatingToolbar::_OnCreate()
     RECT rcClient;
     GetClientRect(_hwnd, &rcClient);
 
-    _hwndToolbarActions = CreateWindowEx(
-        0,
-        TOOLBARCLASSNAME,
-        nullptr,
-        WS_VISIBLE | WS_CHILD | TBSTYLE_LIST | TBSTYLE_FLAT | CCS_NOPARENTALIGN | CCS_NOMOVEY | CCS_NORESIZE,
-        0, 0,
-        0, 0,
-        _hwnd,
-        nullptr,
-        g_hinst,
-        nullptr
-    );
-
-    if (!_hwndToolbarActions)
-    {
-        return E_FAIL;
-    }
-
-    SendMessage(_hwndToolbarActions, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
-    SendMessage(_hwndToolbarActions, TB_SETEXTENDEDSTYLE, 0, TBSTYLE_EX_DOUBLEBUFFER | TBSTYLE_EX_DRAWDDARROWS);
-
-    TBBUTTON rgtbButTools[4] = { 0 };
-    {
-        // Eventually, I want to make this load icons from alternative sources (perhaps
-        // shell32 or imageres) as the operating system supports it. This is fine for now
-        // though.
-        TBADDBITMAP ab;
-        ab.hInst = HINST_COMMCTRL;
-        ab.nID = IDB_STD_SMALL_COLOR;
-        SendMessage(_hwndToolbarActions, TB_ADDBITMAP, 15, (LPARAM)&ab);
-
-        int i = 0;
-
-        rgtbButTools[i].idCommand = IDM_OPENINEXTERNALEDITOR;
-        rgtbButTools[i].iString = (INT_PTR)TEXT("Open in...");
-        rgtbButTools[i].fsState = TBSTATE_ENABLED;
-        rgtbButTools[i].fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_DROPDOWN;
-        rgtbButTools[i].iBitmap = STD_FILENEW; // Temporary icon.
-
-        i++;
-        rgtbButTools[i].idCommand = IDM_COPY;
-        rgtbButTools[i].iString = (INT_PTR)TEXT("Copy");
-        rgtbButTools[i].fsState = TBSTATE_ENABLED;
-        rgtbButTools[i].fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE;
-        rgtbButTools[i].iBitmap = STD_COPY;
-
-        i++;
-        rgtbButTools[i].idCommand = IDM_SAVE;
-        rgtbButTools[i].iString = (INT_PTR)TEXT("Save");
-        rgtbButTools[i].fsState = TBSTATE_ENABLED;
-        rgtbButTools[i].fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE;
-        rgtbButTools[i].iBitmap = STD_FILESAVE;
-
-        i++;
-        rgtbButTools[i].idCommand = IDM_DISCARD;
-        rgtbButTools[i].iString = (INT_PTR)TEXT("Discard");
-        rgtbButTools[i].fsState = TBSTATE_ENABLED;
-        rgtbButTools[i].fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE;
-        rgtbButTools[i].iBitmap = STD_DELETE;
-    }
-
-    SendMessage(_hwndToolbarActions, TB_ADDBUTTONS, ARRAYSIZE(rgtbButTools), (LPARAM)&rgtbButTools);
+    SetParent(_pToolbarTools->GetHWND(), _hwnd);
+    SetWindowPos(_pToolbarTools->GetHWND(), nullptr, 0, 0, 0, 0, SWP_NOACTIVATE | SWP_NOZORDER);
+    _pActionStrip = CEditorActionsStrip::Create(_pEditor, 0, WS_CHILD, 0, 0, 0, 0, _hwnd);
 
     SIZE sizeActionsIdeal;
-    SendMessage(_hwndToolbarActions, TB_GETMAXSIZE, FALSE, (LPARAM)&sizeActionsIdeal);
+    SendMessage(_pToolbarTools->GetHWND(), TB_GETMAXSIZE, FALSE, (LPARAM)&sizeActionsIdeal);
     
     RECT rcActions;
     rcActions.left = 0;
@@ -152,10 +552,10 @@ HRESULT CEditorFloatingToolbar::_OnCreate()
 
     // Getting the maximum size of the toolbar doesn't actually work out so well, so we will just
     // calculate it manually...
-    for (int i = 0, j = SendMessage(_hwndToolbarActions, TB_BUTTONCOUNT, 0, 0); i < j; i++)
+    for (int i = 0, j = SendMessage(_pActionStrip->GetHWND(), TB_BUTTONCOUNT, 0, 0); i < j; i++)
     {
         RECT rcItem;
-        SendMessage(_hwndToolbarActions, TB_GETITEMRECT, i, (LPARAM)&rcItem);
+        SendMessage(_pActionStrip->GetHWND(), TB_GETITEMRECT, i, (LPARAM)&rcItem);
 
         if (RECTHEIGHT(rcActions) < RECTHEIGHT(rcItem))
         {
@@ -181,7 +581,7 @@ HRESULT CEditorFloatingToolbar::_OnCreate()
         AdjustWindowRectEx(&rcAdjusted, dwStyle, FALSE, dwExStyle);
 
         SetWindowPos(
-            _hwnd,
+            _pToolbarTools->GetHWND(),
             nullptr,
             0, 0,
             RECTWIDTH(rcActions), RECTHEIGHT(rcActions),
@@ -189,86 +589,11 @@ HRESULT CEditorFloatingToolbar::_OnCreate()
         );
     }
 
-    _hwndToolbarTools = CreateWindowEx(
-        0,
-        TOOLBARCLASSNAME,
-        nullptr,
-        WS_VISIBLE | WS_CHILD | TBSTYLE_WRAPABLE | TBSTYLE_TOOLTIPS | TBSTYLE_LIST | TBSTYLE_FLAT | CCS_TOP,
-        0, 0,
-        0, 0,
-        _hwnd,
-        nullptr,
-        g_hinst,
-        nullptr
-    );
-
-    if (!_hwndToolbarTools)
-    {
-        return E_FAIL;
-    }
-
-    SendMessage(_hwndToolbarTools, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
-
-    int cExtTools = _pEditor->GetExtensionToolCount();
-    int cSuccessfulTools = 0;
-    TBBUTTON *rgtbButtons = new TBBUTTON[2 + cExtTools];
-    DBGPRINT(TEXT("Extension tool count: %d"), cExtTools);
-    ZeroMemory(rgtbButtons, sizeof(TBBUTTON) * (2 + cExtTools));
-    {
-        int &i = cSuccessfulTools;
-
-        // This bitmap loading routine is bad (I want to load from icons anyway), but it
-        // works for now.
-        HBITMAP hbmSelect = (HBITMAP)LoadImage(g_hinst, MAKEINTRESOURCE(IDB_TOOLSELECT), IMAGE_BITMAP, 16, 16, LR_DEFAULTCOLOR);
-        HBITMAP hbmMove = (HBITMAP)LoadImage(g_hinst, MAKEINTRESOURCE(IDB_TOOLMOVE), IMAGE_BITMAP, 16, 16, LR_DEFAULTCOLOR);
-
-        TBADDBITMAP ab;
-        ab.hInst = nullptr;
-        ab.nID = (UINT_PTR)hbmSelect;
-        SendMessage(_hwndToolbarTools, TB_ADDBITMAP, 1, (LPARAM)&ab);
-        ab.nID = (UINT_PTR)hbmMove;
-        SendMessage(_hwndToolbarTools, TB_ADDBITMAP, 1, (LPARAM)&ab);
-
-        rgtbButtons[i].idCommand = IDM_TOOLFIRST + SSET_SELECT;
-        rgtbButtons[i].dwData = (INT_PTR)TEXT("Select");
-        rgtbButtons[i].fsState = TBSTATE_ENABLED;
-        rgtbButtons[i].fsStyle = BTNS_CHECK;
-        rgtbButtons[i].iBitmap = 0;
-
-        i++;
-        rgtbButtons[i].idCommand = IDM_TOOLFIRST + SSET_DRAG;
-        rgtbButtons[i].dwData = (INT_PTR)TEXT("Move");
-        rgtbButtons[i].fsState = TBSTATE_ENABLED;
-        rgtbButtons[i].fsStyle = BTNS_CHECK;
-        rgtbButtons[i].iBitmap = 1;
-
-        for (int j = 0; j < _pEditor->GetExtensionToolCount(); j++)
-        {
-            ExtensionToolInfo eti;
-            if (SUCCEEDED(_pEditor->GetExtensionToolInfo(j, &eti)))
-            {
-                i++;
-                rgtbButtons[i].idCommand = IDM_TOOLFIRST + eti.idTool;
-                rgtbButtons[i].dwData = (INT_PTR)eti.pszToolName;
-                rgtbButtons[i].fsState = TBSTATE_ENABLED;
-                rgtbButtons[i].fsStyle = BTNS_CHECK;
-                rgtbButtons[i].iBitmap = 1; // TODO: What to do here?
-            }
-            else
-            {
-                DBGPRINT(TEXT("Failed to get extension tool info."));
-            }
-        }
-    }
-
-    SendMessage(_hwndToolbarTools, TB_ADDBUTTONS, cSuccessfulTools + 1, (LPARAM)rgtbButtons);
-    SendMessage(_hwndToolbarTools, TB_AUTOSIZE, 0, 0);
-
-    delete[] rgtbButtons;
+    SendMessage(_pToolbarTools->GetHWND(), TB_AUTOSIZE, 0, 0);
 
     RECT rcTools;
-    GetWindowRect(_hwndToolbarTools, &rcTools);
-    MapWindowPoints(HWND_DESKTOP, GetParent(_hwndToolbarTools), (LPPOINT)&rcTools, 2);
+    GetWindowRect(_pToolbarTools->GetHWND(), &rcTools);
+    MapWindowPoints(HWND_DESKTOP, GetParent(_pToolbarTools->GetHWND()), (LPPOINT)&rcTools, 2);
 
     // Move the actions strip to appear below the toolbox:
     OffsetRect(&rcActions, 0, rcTools.bottom);
@@ -290,14 +615,14 @@ HRESULT CEditorFloatingToolbar::_OnCreate()
     AdjustWindowRectEx(&rcAdjusted, dwStyle, FALSE, dwExStyle);
 
     SetWindowPos(
-        _hwndToolbarActions,
-        _hwndToolbarTools,
+        _pActionStrip->GetHWND(),
+        _pToolbarTools->GetHWND(),
         rcActions.left, rcActions.top,
         RECTWIDTH(rcAdjusted), RECTHEIGHT(rcActions),
         SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_FRAMECHANGED
     );
     SetWindowPos(
-        _hwndToolbarTools,
+        _pToolbarTools->GetHWND(),
         nullptr,
         rcTools.left, rcTools.top,
         RECTWIDTH(rcAdjusted), RECTHEIGHT(rcTools),
@@ -312,95 +637,27 @@ HRESULT CEditorFloatingToolbar::_OnCreate()
         SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_FRAMECHANGED
     );
 
+    ShowWindow(_pToolbarTools->GetHWND(), SW_SHOW);
+    ShowWindow(_pActionStrip->GetHWND(), SW_SHOW);
+
     return S_OK;
 }
 
 LRESULT CEditorFloatingToolbar::_OnCommand(WPARAM wParam, LPARAM lParam)
 {
-    HWND hwndEditor = _pEditor->GetHWND();
-
-    if (LOWORD(wParam) >= IDM_TOOLFIRST)
+    if (LOWORD(wParam) >= CEditorActionsStrip::IDM_TOOLFIRST)
     {
-        SendMessage(hwndEditor, CScreenshotEditorWindow::WM_SSE_CHANGETOOL, LOWORD(wParam) - IDM_TOOLFIRST, 0);
+        // TODO: Shift the wParam by IDM_TOOLFIRST in the future. It's a bit weird for the
+        // tools toolbar to be aware of this implementation detail from the action strip and
+        // floating toolbar.
+        SendMessage(_pToolbarTools->GetHWND(), WM_COMMAND, wParam, lParam);
     }
     else switch (LOWORD(wParam))
     {
-        case IDM_DISCARD:
-        {
-            DestroyWindow(hwndEditor);
-            break;
-        }
-
-        case IDM_COPY:
-        {
-            SendMessage(hwndEditor, CScreenshotEditorWindow::WM_SSE_COPYTOCLIPBOARD, 0, 0);
-            break;
-        }
-
-        case IDM_SAVE:
-        {
-            SendMessage(hwndEditor, CScreenshotEditorWindow::WM_SSE_SAVEIMAGE, 0, 0);
-            break;
-        }
-
-        case IDM_OPENINEXTERNALEDITOR:
-        {
-            MessageBox(hwndEditor, TEXT("This operation has yet to be implemented."), TEXT("Unimplemented!"), MB_OK | MB_ICONERROR);
-            break;
-        }
+        SendMessage(_pActionStrip->GetHWND(), WM_COMMAND, wParam, lParam);
     }
 
     return 0;
-}
-
-LRESULT CEditorFloatingToolbar::_OnNotify(NMHDR *pnmh, WPARAM wParam, bool *pfHandled)
-{
-    if (pnmh->code == TTN_GETDISPINFO)
-    {
-        NMTTDISPINFO *pDispInfo = (NMTTDISPINFO *)pnmh;
-
-        TBBUTTONINFO tbbi = { sizeof(tbbi) };
-        tbbi.dwMask = TBIF_LPARAM;
-        if (SendMessage(_hwndToolbarTools, TB_GETBUTTONINFO, pDispInfo->hdr.idFrom, (LPARAM)&tbbi) > -1)
-        {
-            pDispInfo->lpszText = (TCHAR *)tbbi.lParam;
-            return 0;
-        }
-    }
-    else if (pnmh->code == NM_CUSTOMDRAW && pnmh->hwndFrom == _hwndToolbarActions)
-    {
-        NMTBCUSTOMDRAW *ptbcd = (NMTBCUSTOMDRAW *)pnmh;
-
-        switch (ptbcd->nmcd.dwDrawStage)
-        {
-            case CDDS_PREPAINT:
-            {
-                RECT rc;
-                GetClientRect(pnmh->hwndFrom, &rc);
-                FillRect(ptbcd->nmcd.hdc, &rc, GetSysColorBrush(COLOR_BTNFACE));
-                *pfHandled = true;
-                return CDRF_DODEFAULT;
-            }
-        }
-    }
-
-    return 0;
-}
-
-HRESULT CEditorFloatingToolbar::_UnselectTool()
-{
-    for (int i = 0, j = SendMessage(_hwndToolbarTools, TB_BUTTONCOUNT, 0, 0); i < j; i++)
-    {
-		TBBUTTON tbb = { 0 };
-        SendMessage(_hwndToolbarTools, TB_GETBUTTON, i, (LPARAM)&tbb);
-
-        if (tbb.fsState & TBSTATE_CHECKED)
-        {
-            SendMessage(_hwndToolbarTools, TB_CHECKBUTTON, tbb.idCommand, FALSE);
-        }
-    }
-
-    return S_OK;
 }
 
 // static
@@ -416,7 +673,7 @@ HRESULT CEditorFloatingToolbar::RegisterWindowClass()
 }
 
 // static
-CEditorFloatingToolbar *CEditorFloatingToolbar::Create(CScreenshotEditorWindow *pEditor)
+CEditorFloatingToolbar *CEditorFloatingToolbar::Create(CEditorToolbar *pToolbar)
 {
     if (FAILED(RegisterWindowClass()))
     {
@@ -442,36 +699,10 @@ CEditorFloatingToolbar *CEditorFloatingToolbar::Create(CScreenshotEditorWindow *
         nullptr,
         nullptr,
         g_hinst,
-        pEditor
+        pToolbar
     );
 
     return pWnd;
-}
-
-HRESULT CEditorFloatingToolbar::SelectOrdinalTool(int idx)
-{
-    int cButtons = SendMessage(_hwndToolbarTools, TB_BUTTONCOUNT, 0, 0);
-
-    if (idx <= cButtons)
-    {
-        TBBUTTON tbb;
-        SendMessage(_hwndToolbarTools, TB_GETBUTTON, idx - 1, (LPARAM)&tbb);
-
-        SendMessage(_pEditor->GetHWND(), CScreenshotEditorWindow::WM_SSE_CHANGETOOL, tbb.idCommand - IDM_TOOLFIRST, 0);
-        return S_OK;
-    }
-
-    return E_BOUNDS;
-}
-
-HRESULT CEditorFloatingToolbar::OnToolChanged(ScreenshotEditorTool toolNew)
-{
-    ASSERT_EXPR(SUCCEEDED(_UnselectTool()));
-
-    // If the requested tool has no toolbar item, then this will supposedly fail.
-    ASSERT_EXPR(SendMessage(_hwndToolbarTools, TB_CHECKBUTTON, toolNew + IDM_TOOLFIRST, TRUE));
-
-    return S_OK;
 }
 
 //
@@ -1446,7 +1677,10 @@ LRESULT CScreenshotEditorWindow::_OnKeyDown(WPARAM virtualKey, LPARAM lParam)
         case '8':
         case '9':
         {
-            _pFloatingToolbar->SelectOrdinalTool( 1 + virtualKey - '1' );
+            if (_pToolbar)
+            {
+                _pToolbar->SelectOrdinalTool(1 + virtualKey - '1');
+            }
             break;
         }
     }
@@ -1812,10 +2046,20 @@ HRESULT CScreenshotEditorWindow::_ChangeTool(ScreenshotEditorTool newTool)
     _UpdateCursor();
 
     _pRenderer->UpdateSizingHelpersVisibility(_tool == SSET_DRAG);
-    if (_pFloatingToolbar)
-        _pFloatingToolbar->OnToolChanged(newTool);
+    if (_pToolbar)
+        _pToolbar->OnToolChanged(newTool);
 
     return S_OK;
+}
+
+HRESULT CScreenshotEditorWindow::_EnsureToolbar()
+{
+    if (!_pToolbar)
+    {
+        _pToolbar = CEditorToolbar::Create(this, 0, WS_CHILD, 0, 0, 0, 0, _hwnd);
+    }
+
+    return _pToolbar ? S_OK : E_FAIL;
 }
 
 void CScreenshotEditorWindow::_ShowFloatingToolbar()
@@ -1824,16 +2068,19 @@ void CScreenshotEditorWindow::_ShowFloatingToolbar()
     ptShow.x = (_rcSelection.right + _pScreenshotCtx->_ptVirtualScreen.x) + 10; // Maybe ask the renderer instead?
     ptShow.y = (_rcSelection.top + _pScreenshotCtx->_ptVirtualScreen.y);
 
-    // If we don't have a toolbar yet, then we will create one:
-    if (!_pFloatingToolbar)
+    if (SUCCEEDED(_EnsureToolbar()))
     {
-        _pFloatingToolbar = CEditorFloatingToolbar::Create(this);
-        _pFloatingToolbar->OnToolChanged(_tool);
-    }
+        // If we don't have a toolbar yet, then we will create one:
+        if (!_pFloatingToolbar)
+        {
+            _pFloatingToolbar = CEditorFloatingToolbar::Create(_pToolbar);
+            _pToolbar->OnToolChanged(_tool);
+        }
 
-    if (_pFloatingToolbar)
-    {
-        SetWindowPos(_pFloatingToolbar->GetHWND(), nullptr, ptShow.x, ptShow.y, 0, 0, SWP_NOSIZE | SWP_SHOWWINDOW);
+        if (_pFloatingToolbar)
+        {
+            SetWindowPos(_pFloatingToolbar->GetHWND(), nullptr, ptShow.x, ptShow.y, 0, 0, SWP_NOSIZE | SWP_SHOWWINDOW);
+        }
     }
 }
 
