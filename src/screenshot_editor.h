@@ -148,10 +148,14 @@ class CScreenshotEditorRendererGDI
     HRESULT _EndSelectionMarqueeTimer();
     HRESULT _DrawMarqueeDottedRectangle(HDC hdc, RECT *prc);
     HRESULT _MakeDimmedScreenshot();
+    HRESULT _DimScreenshot32BPP();
+    HRESULT _DimScreenshot24BPP();
+    HRESULT _DitherScreenshot(BITMAP *pbm);
     HRESULT _FindRenderObjectFromInterfaceObject(
         IScreenshotEditorObject *pIfaceObj, OUT CRenderObject **ppRenderObjOut, OUT int *pIdxOut = nullptr);
 
 public:
+    static constexpr int c_iDimAmount = 0xFF * 0.75;
     static constexpr int c_iRadiusSelHelper = 9;
     static constexpr int c_idTimerMarquee = 101;
 
