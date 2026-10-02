@@ -259,6 +259,80 @@ public:
     HRESULT InvalidateRenderObject(IScreenshotEditorObject *pObj);
 };
 
+class CEditHistoryManager
+{
+public:
+    enum EditHistoryActionId
+    {
+        EHID_SELECTREGION,
+        EHID_OBJECTCREATE,
+        EHID_OBJECTREMOVE,
+        EHID_OBJECTMOVE,
+        EHID_OBJECT, // Unique handler for an object.
+    };
+
+    struct EditHistoryData
+    {
+        EditHistoryActionId idAction;
+
+        union
+        {
+            struct SelectionHistoryEntry
+            {
+                RECT rcRegionNew;
+            } selection;
+
+            IScreenshotEditorObject *pObject;
+
+            struct ObjectMoveEditHistoryEntry
+            {
+                IScreenshotEditorObject *pObject;
+                RECT rcNew;
+                RECT rcOld;
+            } objectMove;
+
+            struct ObjectEditHistoryEntry
+            {
+                IScreenshotEditorObject *pObject;
+                ULONG ulEventId;
+            } objectUnique;
+        } data;
+    };
+
+private:
+    CDynamicArray<EditHistoryData> _vData;
+    int _iPos;
+
+    HRESULT _Push(EditHistoryData *pData);
+    HRESULT _DestroyEntry(int idxEntry);
+
+public:
+    CEditHistoryManager()
+        : _iPos(0)
+    {
+    }
+
+    ~CEditHistoryManager();
+
+    inline int GetPosition() { return _iPos; }
+    inline int SetPosition(int iPos) { _iPos = iPos; }
+    inline void Rewind() { _iPos--; if (_iPos < 0) _iPos = 0; }
+    inline void Progress() { _iPos++; if (_iPos > _vData.GetSize() - 1) _iPos = _vData.GetSize() - 1;  }
+
+    // I don't think this architecture with actually popping the entry will work. The position
+    // should be pushed back, and future entries are destroyed if there is anything beyond the
+    // cursor when pushing.
+
+    HRESULT PushSelectRegion(RECT *prcSelectionNew);
+    HRESULT PushObjectCreate(IScreenshotEditorObject *pObj);
+    HRESULT PushObjectRemove(IScreenshotEditorObject *pObj);
+    HRESULT PushObjectMove(IScreenshotEditorObject *pObj, RECT *prcNew, RECT *prcOld);
+    HRESULT PushObjectUnique(IScreenshotEditorObject *pObj, ULONG ulEventId);
+    HRESULT GetPrevious(EditHistoryData *pData);
+    HRESULT GetNext(EditHistoryData *pData);
+    HRESULT GetCurrent(EditHistoryData *pData);
+};
+
 //
 // Editor main window. 
 //
@@ -271,6 +345,7 @@ class CScreenshotEditorWindow
 private:
     CScreenshotContext *_pScreenshotCtx;
     CScreenshotEditorRendererGDI *_pRenderer;
+    CEditHistoryManager *_pHistoryMgr;
     CEditorToolbar *_pToolbar;
     CEditorFloatingToolbar *_pFloatingToolbar;
     IScreenshotEditorObject *_pSelectedObject;
@@ -286,6 +361,7 @@ private:
     bool _fEnumeratedWindows;
     bool _fIsSelectingRegion;
     bool _fHasAnySelectionMade;
+    bool _fIsManagingHistory;
 
 protected:
     inline bool _IsExtensionTool()
@@ -306,6 +382,10 @@ protected:
     HRESULT _ApplyCrop();
 
     HRESULT _LoadExtensionTools();
+
+    HRESULT _ApplyHistoryState(CEditHistoryManager::EditHistoryData *pehd);
+    HRESULT _Undo();
+    HRESULT _Redo();
 
     HRESULT _ChangeTool(ScreenshotEditorTool newTool);
     HRESULT _EnsureToolbar();
@@ -369,7 +449,10 @@ public:
         , _fEnumeratedWindows(false)
         , _fIsSelectingRegion(false)
         , _fHasAnySelectionMade(false)
+        , _fIsManagingHistory(false)
 	{
+        _pHistoryMgr = new CEditHistoryManager();
+
         ZeroMemory(&_ptSelectionOrigin, sizeof(_ptSelectionOrigin));
         ZeroMemory(&_rcSelection, sizeof(_rcSelection));
         ZeroMemory(&_rcDragBegin, sizeof(_rcDragBegin));
@@ -389,6 +472,10 @@ public:
      *      Taken ownership of.
      */
     static CScreenshotEditorWindow *CreateAndShow(CScreenshotContext *pScreenshotCtx);
+
+#ifdef _DEBUG
+    friend class CEditHistoryManager;
+#endif
 };
 
 //

@@ -46,7 +46,7 @@ STDMETHODIMP CTextEditorTool::SetSite(IUnknown *pUnkSite)
 }
 
 
-STDMETHODIMP CTextEditorTool::SelectTool()
+STDMETHODIMP CTextEditorTool::ToolSelectionChanged(BOOL fSelected)
 {
     return S_OK;
 }

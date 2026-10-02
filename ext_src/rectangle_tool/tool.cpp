@@ -47,7 +47,7 @@ STDMETHODIMP CRectangleTool::SetSite(IUnknown *pUnkSite)
     return hr;
 }
 
-STDMETHODIMP CRectangleTool::SelectTool()
+STDMETHODIMP CRectangleTool::ToolSelectionChanged(BOOL fSelected)
 {
     return S_OK;
 }

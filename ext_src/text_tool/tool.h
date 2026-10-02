@@ -15,7 +15,7 @@ public:
     //@End IObjectWithSite
 
     //@Begin IScreenshotEditorTool
-    STDMETHODIMP SelectTool() override;
+    STDMETHODIMP ToolSelectionChanged(BOOL fSelected) override;
     STDMETHODIMP_(ULONG) GetFlags() override;
     STDMETHODIMP_(HICON) GetToolIcon() override;
     STDMETHODIMP GetToolName(OUT const TCHAR **pszOut) override;

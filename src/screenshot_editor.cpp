@@ -98,7 +98,7 @@ LRESULT CEditorToolbar::_OnCreate(CREATESTRUCT *pcs)
         int &i = cSuccessfulTools;
 
         // This bitmap loading routine is bad (I want to load from icons anyway), but it
-        // works for now.
+        // works for now. It actually leaks.
         HBITMAP hbmSelect = (HBITMAP)LoadImage(g_hinst, MAKEINTRESOURCE(IDB_TOOLSELECT), IMAGE_BITMAP, 16, 16, LR_DEFAULTCOLOR);
         HBITMAP hbmMove = (HBITMAP)LoadImage(g_hinst, MAKEINTRESOURCE(IDB_TOOLMOVE), IMAGE_BITMAP, 16, 16, LR_DEFAULTCOLOR);
 
@@ -769,7 +769,7 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
             : hdc;
 
         // Highlight the selected area of the screenshot:
-        SelectObject(hdcScreenshot, _hbmScreenshotLight);
+        HGDIOBJ hOldBmp = SelectObject(hdcScreenshot, _hbmScreenshotLight);
         BitBlt(
             hdcSelection,
             _rcSelection.left, _rcSelection.top,
@@ -786,7 +786,8 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
             _PaintSelectionRectangle(hdcSelection, &_rcSelection, false);
         }
 
-        SelectObject(hdcScreenshot, hObjOldSS);
+        SelectObject(hdcScreenshot, hOldBmp);
+        SelectObject(hdcScreenshot, _hbmScreenshotDimmed);
     }
 
     if (true||_bmp.fAnyObjectDirty)
@@ -1009,8 +1010,12 @@ HRESULT CScreenshotEditorRendererGDI::RemoveRenderObject(IScreenshotEditorObject
     int idxRenderObj;
     if (SUCCEEDED(_FindRenderObjectFromInterfaceObject(pObj, &pro, &idxRenderObj)))
     {
+        RECT rcLogical = { 0 };
+        ASSERT_EXPR(SUCCEEDED(pObj->GetLogicalRect(&rcLogical)));
+
         RECT rcVisual = { 0 };
         ASSERT_EXPR(SUCCEEDED(pObj->GetVisualRect(&rcVisual)));
+        OffsetRect(&rcVisual, rcLogical.left, rcLogical.top);
 
         if (pro->_pRendererGdi)
             pro->_pRendererGdi->Release();
@@ -1019,6 +1024,7 @@ HRESULT CScreenshotEditorRendererGDI::RemoveRenderObject(IScreenshotEditorObject
         if (pro->_pObj)
             pro->_pObj->Release();
 
+        _vRenderObjs.Remove(idxRenderObj);
         _bmp.fAnyObjectDirty = true;
         InvalidateRect(_hwndRenderTarget, &rcVisual, FALSE);
     }
@@ -1670,11 +1676,13 @@ LRESULT CScreenshotEditorWindow::_OnCreate(CREATESTRUCT *pCs)
 
 LRESULT CScreenshotEditorWindow::_OnDestroy()
 {
-    for (int i = _vObjs.GetSize() - 1; i > 0; i--)
+    for (int i = _vObjs.GetSize() - 1; i >= 0; i--)
     {
         _RemoveObject(_vObjs[i]);
     }
 
+    if (_pHistoryMgr)
+        delete _pHistoryMgr;
     if (_pRenderer)
         delete _pRenderer;
     if (_pScreenshotCtx)
@@ -1725,6 +1733,28 @@ LRESULT CScreenshotEditorWindow::_OnKeyDown(WPARAM virtualKey, LPARAM lParam)
         case 'T':
         {
             _ShowFloatingToolbar();
+            break;
+        }
+
+        case 'Z':
+        {
+            if (GetKeyState(VK_SHIFT) < 0 && GetKeyState(VK_CONTROL) < 0)
+            {
+                _Redo();
+            }
+            else if (GetKeyState(VK_CONTROL) < 0)
+            {
+                _Undo();
+            }
+            break;
+        }
+
+        case 'Y':
+        {
+            if (GetKeyState(VK_CONTROL) < 0)
+            {
+                _Redo();
+            }
             break;
         }
 
@@ -1930,7 +1960,11 @@ LRESULT CScreenshotEditorWindow::_OnMouseLButtonUp(int x, int y, WPARAM flags)
     _fIsSelectingRegion = false;
     _ptSelectionOrigin.x = _ptSelectionOrigin.y = 0;
 
-    if (_IsExtensionTool())
+    if (_tool == SSET_SELECT || _tool == SSET_DRAG)
+    {
+        _pHistoryMgr->PushSelectRegion(&_rcSelection);
+    }
+    else if (_IsExtensionTool())
     {
         HRESULT hr = _pExtTool->OnMouseLButtonUp(x, y, flags);
         if (hr == S_FALSE)
@@ -2066,8 +2100,86 @@ HRESULT CScreenshotEditorWindow::_LoadExtensionTools()
     return S_OK;
 }
 
+HRESULT CScreenshotEditorWindow::_ApplyHistoryState(CEditHistoryManager::EditHistoryData *pehd)
+{
+    _fIsManagingHistory = true;
+    HRESULT hr = S_OK;
+
+    if (pehd->idAction == CEditHistoryManager::EHID_SELECTREGION)
+    {
+        _rcSelection = pehd->data.selection.rcRegionNew;
+        _pRenderer->UpdateSelection(&_rcSelection);
+    }
+    else if (pehd->idAction == CEditHistoryManager::EHID_OBJECTCREATE)
+    {
+        hr = InsertObject(pehd->data.pObject);
+    }
+    else if (pehd->idAction == CEditHistoryManager::EHID_OBJECTREMOVE)
+    {
+        hr = _RemoveObject(pehd->data.pObject);
+    }
+    // Not handled yet: OBJECTMOVE, OBJECT (unique)
+
+    _fIsManagingHistory = false;
+    return hr;
+}
+
+HRESULT CScreenshotEditorWindow::_Undo()
+{
+    CEditHistoryManager::EditHistoryData ehd;
+    HRESULT hr = _pHistoryMgr->GetPrevious(&ehd);
+    if (SUCCEEDED(hr))
+    {
+        CEditHistoryManager::EditHistoryData ehdCur;
+        hr = _pHistoryMgr->GetCurrent(&ehdCur);
+        if (SUCCEEDED(hr))
+        {
+            _fIsManagingHistory = true;
+
+            // Invert the current case (if necessary):
+            if (ehdCur.idAction == CEditHistoryManager::EHID_OBJECTCREATE)
+            {
+                // Remove the object if it was added.
+                _RemoveObject(ehdCur.data.pObject);
+            }
+            else if (ehdCur.idAction == CEditHistoryManager::EHID_OBJECTREMOVE)
+            {
+                // Add the object if it was removed.
+                InsertObject(ehdCur.data.pObject);
+            }
+
+            // Apply the previous case:
+            hr = _ApplyHistoryState(&ehd); // Unsets _fIsManagingHistory for us.
+            _pHistoryMgr->Rewind();
+        }
+    }
+
+    return hr;
+}
+
+HRESULT CScreenshotEditorWindow::_Redo()
+{
+    CEditHistoryManager::EditHistoryData ehd;
+    HRESULT hr = _pHistoryMgr->GetNext(&ehd);
+    if (SUCCEEDED(hr))
+    {
+        hr = _ApplyHistoryState(&ehd);
+        _pHistoryMgr->Progress();
+    }
+
+    return hr;
+}
+
 HRESULT CScreenshotEditorWindow::_ChangeTool(ScreenshotEditorTool newTool)
 {
+    if (newTool != _tool && _IsExtensionTool())
+    {
+        // This still runs if _ChangeTool fails, which can happen if another extension
+        // tool rejects the change.
+        // TODO: Refactor to avoid this case.
+        _pExtTool->ToolSelectionChanged(FALSE);
+    }
+
     if (newTool == SSET_SELECT)
     {
         _tool = SSET_SELECT;
@@ -2096,7 +2208,7 @@ HRESULT CScreenshotEditorWindow::_ChangeTool(ScreenshotEditorTool newTool)
             return E_ABORT;
         }
 
-        if (FAILED(pExtTool->SelectTool()))
+        if (FAILED(pExtTool->ToolSelectionChanged(TRUE)))
         {
             return E_ABORT;
         }
@@ -2239,7 +2351,7 @@ void CScreenshotEditorWindow::_CancelSelection()
 
 int CScreenshotEditorWindow::_ComputeDragMode(POINT ptCursor, RECT *prcDraggedObj)
 {
-    static constexpr int c_iGrabRadius = 4; // On both sides.
+    static constexpr int c_iGrabRadius = 4; // On all sides.
     int dm = DRAGM_DRAG;
 
     if (ptCursor.y >= (prcDraggedObj->top - c_iGrabRadius) && ptCursor.y <= (prcDraggedObj->top + c_iGrabRadius)
@@ -2270,13 +2382,21 @@ int CScreenshotEditorWindow::_ComputeDragMode(POINT ptCursor, RECT *prcDraggedOb
 HRESULT CScreenshotEditorWindow::_RemoveObject(IScreenshotEditorObject *pObj)
 {
     // Search an object by its reference and remove it.
-    for (int i = 0; i < _vObjs.GetSize(); i++)
+    for (size_t i = 0; i < _vObjs.GetSize(); i++)
     {
         if (_vObjs[i] == pObj)
         {
             _pRenderer->RemoveRenderObject(pObj);
 
             pObj->SetSite(nullptr);
+
+            // N.B. We want to call PushObjectRemove before releasing the object here.
+            // The resulting history entry will add a reference to the object and hold
+            // it until it is destroyed. If we did it the other way around, then we risk
+            // freeing the object from memory (thus breaking redo functionality)
+            if (!_fIsManagingHistory)
+                _pHistoryMgr->PushObjectRemove(pObj);
+
             pObj->Release();
             _vObjs.Remove(i);
             return S_OK;
@@ -2339,6 +2459,9 @@ STDMETHODIMP CScreenshotEditorWindow::InsertObject(IScreenshotEditorObject *pObj
         {
             _RemoveObject(pObj);
         }
+
+        if (!_fIsManagingHistory)
+            _pHistoryMgr->PushObjectCreate(pObj);
 
         InvalidateObject(pObj);
         hr = S_OK;
@@ -2517,4 +2640,166 @@ CFloatingScreenshotEditorWindow *CFloatingScreenshotEditorWindow::CreateAndShow(
 {
     // TODO: Implement!
     return nullptr;
+}
+
+//
+// CEditHistoryManager
+//
+
+HRESULT CEditHistoryManager::_Push(EditHistoryData *pData)
+{
+    if (_vData.GetSize() > 0 && _iPos != _vData.GetSize() - 1)
+    {
+        for (size_t i = _vData.GetSize() - 1; i > _iPos; i--)
+        {
+            _DestroyEntry(i);
+            _vData.Remove(i);
+        }
+    }
+
+    _vData.Push(*pData);
+    Progress();
+    return S_OK;
+}
+
+HRESULT CEditHistoryManager::_DestroyEntry(int idxEntry)
+{
+    EditHistoryData ehd = _vData[idxEntry];
+    HRESULT hr = S_OK;
+
+    IScreenshotEditorObject *pEditorObj = nullptr;
+
+    if (ehd.idAction == EHID_OBJECTCREATE || ehd.idAction == EHID_OBJECTREMOVE)
+    {
+        if (ehd.data.pObject)
+            pEditorObj = ehd.data.pObject;
+    }
+    else if (ehd.idAction == EHID_OBJECTMOVE)
+    {
+        if (ehd.data.objectMove.pObject)
+            pEditorObj = ehd.data.objectMove.pObject;
+    }
+    else if (ehd.idAction == EHID_OBJECT)
+    {
+        if (ehd.data.objectUnique.pObject)
+            pEditorObj = ehd.data.objectUnique.pObject;
+    }
+
+    if (pEditorObj)
+    {
+#ifdef _DEBUG
+        {
+            HWND hwndEditor = FindWindow(CScreenshotEditorWindow::GetWindowClass(), nullptr);
+            CScreenshotEditorWindow *pEditor = (CScreenshotEditorWindow *)GetWindowLongPtr(hwndEditor, 0);
+
+            FOR_EACH_DYNARR(IScreenshotEditorObject *&pObjInEditor, pEditor->_vObjs)
+            {
+                if (pObjInEditor == pEditorObj)
+                {
+                    assert("Destroying an entry for an object which exists in the document!" && 0);
+                }
+            }
+        }
+#endif
+
+        hr = pEditorObj->Release();
+    }
+
+    return hr;
+}
+
+CEditHistoryManager::~CEditHistoryManager()
+{
+    for (int i = _vData.GetSize() - 1; i >= 0; i--)
+    {
+        _DestroyEntry(i);
+    }
+}
+
+HRESULT CEditHistoryManager::PushSelectRegion(RECT *prcSelectionNew)
+{
+    EditHistoryData ehd;
+    ehd.idAction = EHID_SELECTREGION;
+    ehd.data.selection.rcRegionNew = *prcSelectionNew;
+
+    return _Push(&ehd);
+}
+
+HRESULT CEditHistoryManager::PushObjectCreate(IScreenshotEditorObject *pObj)
+{
+    EditHistoryData ehd;
+    ehd.idAction = EHID_OBJECTCREATE;
+    ehd.data.pObject = pObj;
+    pObj->AddRef();
+
+    return _Push(&ehd);
+}
+
+HRESULT CEditHistoryManager::PushObjectRemove(IScreenshotEditorObject *pObj)
+{
+    EditHistoryData ehd;
+    ehd.idAction = EHID_OBJECTREMOVE;
+    ehd.data.pObject = pObj;
+    pObj->AddRef();
+
+    return _Push(&ehd);
+}
+
+HRESULT CEditHistoryManager::PushObjectMove(IScreenshotEditorObject *pObj, RECT *prcNew, RECT *prcOld)
+{
+    EditHistoryData ehd;
+    ehd.idAction = EHID_OBJECTMOVE;
+    ehd.data.objectMove.pObject = pObj;
+    ehd.data.objectMove.rcNew = *prcNew;
+    ehd.data.objectMove.rcOld = *prcOld;
+    pObj->AddRef();
+
+    return _Push(&ehd);
+}
+
+HRESULT CEditHistoryManager::PushObjectUnique(IScreenshotEditorObject *pObj, ULONG ulEventId)
+{
+    EditHistoryData ehd;
+    ehd.idAction = EHID_OBJECT;
+    ehd.data.objectUnique.pObject = pObj;
+    ehd.data.objectUnique.ulEventId = ulEventId;
+    pObj->AddRef();
+
+    return _Push(&ehd);
+}
+
+HRESULT CEditHistoryManager::GetPrevious(EditHistoryData *pData)
+{
+    if (!pData)
+        return E_POINTER;
+
+    if ((_iPos - 1) < 0)
+        return E_BOUNDS;
+
+    *pData = _vData[_iPos - 1];
+    return S_OK;
+}
+
+HRESULT CEditHistoryManager::GetNext(EditHistoryData *pData)
+{
+    if (!pData)
+        return E_POINTER;
+    
+    if ((_iPos + 1) > _vData.GetSize() - 1)
+        return E_BOUNDS;
+
+    *pData = _vData[_iPos + 1];
+    return S_OK;
+}
+
+HRESULT CEditHistoryManager::GetCurrent(EditHistoryData *pData)
+{
+    if (!pData)
+        return E_POINTER;
+    
+    if (_vData.GetSize() < 1)
+        return E_BOUNDS;
+
+    *pData = _vData[_iPos];
+    return S_OK;
 }

@@ -178,7 +178,7 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorTool, IObjectWithSite, "{1C093E9E-696B-4
     /**
      * Called when the tool is selected.
      */
-    STDMETHOD(SelectTool)() PURE;
+    STDMETHOD(ToolSelectionChanged)(BOOL fSelected) PURE;
 
     /**
      * Gets various flags used to control the interaction of the tool.
