@@ -247,10 +247,10 @@ HRESULT CEditorToolbar::SelectOrdinalTool(int idx)
 
 HRESULT CEditorToolbar::OnToolChanged(ScreenshotEditorTool toolNew)
 {
-    ASSERT_EXPR(SUCCEEDED(_UnselectTool()));
+    ASSERT_KEEP(SUCCEEDED(_UnselectTool()));
 
     // If the requested tool has no toolbar item, then this will supposedly fail.
-    ASSERT_EXPR(SendMessage(_hwndToolbar, TB_CHECKBUTTON, toolNew + CEditorActionsStrip::IDM_TOOLFIRST, TRUE));
+    ASSERT_KEEP(SendMessage(_hwndToolbar, TB_CHECKBUTTON, toolNew + CEditorActionsStrip::IDM_TOOLFIRST, TRUE));
 
     return S_OK;
 }
@@ -822,7 +822,7 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
                 // over the editor framebuffer.
                 if (true||fObjNoBackbuffer || pRenderObject->_pObj->IsVisualDirty())
                 {
-                    ASSERT_EXPR(SUCCEEDED(_PaintRenderObjectVisualBuffer(hdcSelection, prcPaint, pRenderObject, fObjNoBackbuffer)));
+                    ASSERT_KEEP(SUCCEEDED(_PaintRenderObjectVisualBuffer(hdcSelection, prcPaint, pRenderObject, fObjNoBackbuffer)));
                 }
                 else
                 {
@@ -1011,10 +1011,10 @@ HRESULT CScreenshotEditorRendererGDI::RemoveRenderObject(IScreenshotEditorObject
     if (SUCCEEDED(_FindRenderObjectFromInterfaceObject(pObj, &pro, &idxRenderObj)))
     {
         RECT rcLogical = { 0 };
-        ASSERT_EXPR(SUCCEEDED(pObj->GetLogicalRect(&rcLogical)));
+        ASSERT_KEEP(SUCCEEDED(pObj->GetLogicalRect(&rcLogical)));
 
         RECT rcVisual = { 0 };
-        ASSERT_EXPR(SUCCEEDED(pObj->GetVisualRect(&rcVisual)));
+        ASSERT_KEEP(SUCCEEDED(pObj->GetVisualRect(&rcVisual)));
         OffsetRect(&rcVisual, rcLogical.left, rcLogical.top);
 
         if (pro->_pRendererGdi)
@@ -1212,8 +1212,8 @@ HRESULT CScreenshotEditorRendererGDI::_PaintRenderObjectVisualBuffer(
                     else
                         SetViewportOrgEx(hdcLayer, rcVisual.left, rcVisual.top, &ptViewportOld);
 
-                    ASSERT_EXPR(SUCCEEDED(pRenderObject->_pRendererGdi->SetGdiParameters(hdcLayer, prcPaint)));
-                    ASSERT_EXPR(SUCCEEDED(pRenderObject->_pRendererGdi->Paint()));
+                    ASSERT_KEEP(SUCCEEDED(pRenderObject->_pRendererGdi->SetGdiParameters(hdcLayer, prcPaint)));
+                    ASSERT_KEEP(SUCCEEDED(pRenderObject->_pRendererGdi->Paint()));
 
                     SelectObject(hdcLayer, hObjOld);
 
@@ -1659,8 +1659,8 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
 
 LRESULT CScreenshotEditorWindow::_OnCreate(CREATESTRUCT *pCs)
 {
-    ASSERT_EXPR(_pScreenshotCtx = (CScreenshotContext *)pCs->lpCreateParams);
-    ASSERT_EXPR(_pRenderer = new CScreenshotEditorRendererGDI(_pScreenshotCtx, _hwnd));
+    ASSERT_KEEP(_pScreenshotCtx = (CScreenshotContext *)pCs->lpCreateParams);
+    ASSERT_KEEP(_pRenderer = new CScreenshotEditorRendererGDI(_pScreenshotCtx, _hwnd));
     if (FAILED(_pRenderer->Initialize()))
     {
         MessageBox(nullptr, TEXT("Failed to create renderer."), TEXT("Error"), MB_OK | MB_ICONERROR);
@@ -1669,7 +1669,7 @@ LRESULT CScreenshotEditorWindow::_OnCreate(CREATESTRUCT *pCs)
     _ChangeTool(SSET_SELECT);
     SetWindowPos(_hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED);
 
-    ASSERT_EXPR(SUCCEEDED(_LoadExtensionTools()));
+    ASSERT_KEEP(SUCCEEDED(_LoadExtensionTools()));
 
     return DefWindowProc(_hwnd, WM_CREATE, 0, (LPARAM)pCs);
 }
@@ -2061,7 +2061,7 @@ HRESULT CScreenshotEditorWindow::_LoadExtensionTools()
                             {
                                 ExtensionToolInfo eti = { 0 };
                                 eti.idTool = SSET_EXTENSIONFIRST + _vExtToolInfo.GetSize(); // Last member's index + 1
-                                ASSERT_EXPR(SUCCEEDED(pTool->GetToolName(&eti.pszToolName)));
+                                ASSERT_KEEP(SUCCEEDED(pTool->GetToolName(&eti.pszToolName)));
                                 eti.pTool = pTool;
                                 eti.pTool->SetSite(this);
                                 DBGPRINT(TEXT("Created tool \"%s\" (" PRINT_GUID_PATTERN TEXT(") from extension \"%s\"")),

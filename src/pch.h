@@ -30,9 +30,9 @@
     (guid).Data4[4], (guid).Data4[5], (guid).Data4[6], (guid).Data4[7]                   \
 
 #ifdef _DEBUG
-#define ASSERT_EXPR(expr) assert(expr)
+#define ASSERT_KEEP(expr) assert(expr)
 #else
-#define ASSERT_EXPR(expr) (expr)
+#define ASSERT_KEEP(expr) (expr)
 #endif
 
 #define RECTWIDTH(rc) ((rc).right - (rc).left)

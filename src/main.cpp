@@ -48,12 +48,12 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PTSTR pCmdL
     );
 #endif
 
-    ASSERT_EXPR(SUCCEEDED(CExtensionManager::CreateInstance()));
+    ASSERT_KEEP(SUCCEEDED(CExtensionManager::CreateInstance()));
     TCHAR szFolderRoot[MAX_PATH];
     GetModuleFileName(g_hinst, szFolderRoot, ARRAYSIZE(szFolderRoot));
     PathPopFileName(szFolderRoot);
     PathAppend(szFolderRoot, TEXT("extensions"));
-    ASSERT_EXPR(SUCCEEDED(CExtensionManager::GetInstance()->LoadAllExtensionsFromFolder(szFolderRoot)));
+    ASSERT_KEEP(SUCCEEDED(CExtensionManager::GetInstance()->LoadAllExtensionsFromFolder(szFolderRoot)));
 
     CNotifyWindow *pNotifyWindow = CNotifyWindow::Create();
 
