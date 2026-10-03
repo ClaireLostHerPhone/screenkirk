@@ -7,6 +7,12 @@
 #define DECLARE_INTERFACE_IID_(iface, baseiface, iid)   interface DECLSPEC_UUID(iid) DECLSPEC_NOVTABLE iface : public baseiface
 #endif
 
+#ifdef _UNICODE
+#define QS_TCHAR WCHAR
+#else
+#define QS_TCHAR CHAR
+#endif
+
 // I don't think this would benefit from being a COM class.
 DECLARE_INTERFACE(IScreenshotContext)
 {
@@ -194,11 +200,7 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorTool, IObjectWithSite, "{1C093E9E-696B-4
      * Gets the name of the tool to be displayed in a tooltip when hovering the tool
      * in the toolbox.
      */
-#ifdef _UNICODE
-    STDMETHOD(GetToolName)(OUT const WCHAR **pszOut) PURE;
-#else
-    STDMETHOD(GetToolName)(OUT const CHAR **pszOut) PURE;
-#endif
+    STDMETHOD(GetToolName)(OUT const QS_TCHAR **pszOut) PURE;
 
     /**
      * Called when any keyboard key is pressed down in the document editor while the tool is selected.
@@ -262,26 +264,20 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorExtension, IUnknown, "{42D1141D-1455-47E
 
     STDMETHOD_(ULONG, GetExtensionFlags()) PURE;
 
-#ifdef _UNICODE
     /**
      * Gets the name of the extension.
      */
-    STDMETHOD(GetName)(OUT const WCHAR **pszOut) PURE;
+    STDMETHOD(GetName)(OUT const QS_TCHAR **pszOut) PURE;
 
     /**
      * Gets the version of the extension as a string.
      */
-    STDMETHOD(GetVersionString)(OUT const WCHAR **pszOut) PURE;
+    STDMETHOD(GetVersionString)(OUT const QS_TCHAR **pszOut) PURE;
 
     /**
      * Gets the name of the author of the extension.
      */
-    STDMETHOD(GetAuthor)(OUT const WCHAR **pszOut) PURE;
-#else
-    STDMETHOD(GetName)(OUT const CHAR **pszOut) PURE;
-    STDMETHOD(GetVersionString)(OUT const CHAR **pszOut) PURE;
-    STDMETHOD(GetAuthor)(OUT const CHAR **pszOut) PURE;
-#endif
+    STDMETHOD(GetAuthor)(OUT const QS_TCHAR **pszOut) PURE;
 
     /**
      * Gets a set of tools provided by the extension.
