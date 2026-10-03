@@ -881,6 +881,9 @@ HRESULT CSaveImage::_EncodeWIC(GUID *pEncoderGuid, char **ppcData, int *pcbData)
                                     }
                                 }
                             }
+
+                            pPropertyBag->Release();
+                            pFrameEncode->Release();
                         }
 
                         pEncoder->Release();
