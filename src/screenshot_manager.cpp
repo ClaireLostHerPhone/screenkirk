@@ -336,11 +336,7 @@ class CSaveImage
     struct SupportedExtension
     {
         TCHAR szExtension[64];
-
-        // I think there's an, albeit unlikely, possibility for this pointer to be
-        // moved since it is in the dynamic array.
-        // TODO: Move to offset.
-        CDynamicArray<CodecInfo *> vpProviders;
+        CDynamicArray<UINT> vuiOffsetProviders;
     };
     
     struct FilterItem
@@ -513,6 +509,7 @@ HRESULT CSaveImage::_GetFilterExtensions(CDynamicArray<SupportedExtension> *pvse
         TCHAR *pszToken = _tcstok_s(szExtensionList, TEXT(","), &pszContext);
         while (pszToken != nullptr)
         {
+            UINT uiIndex = i;
             bool fHandled = false;
 
             // Does this extension already exist in the map?
@@ -521,7 +518,7 @@ HRESULT CSaveImage::_GetFilterExtensions(CDynamicArray<SupportedExtension> *pvse
                 if (_tcscmp(se.szExtension, pszToken) == 0)
                 {
                     // Then add this provider to the existing supported extension.
-                    se.vpProviders.Push(&ci);
+                    se.vuiOffsetProviders.Push(uiIndex);
                     fHandled = true;
                 }
             }
@@ -531,7 +528,7 @@ HRESULT CSaveImage::_GetFilterExtensions(CDynamicArray<SupportedExtension> *pvse
             {
                 SupportedExtension se = { 0 };
                 _tcscpy_s(se.szExtension, pszToken);
-                se.vpProviders.Push(&ci);
+                se.vuiOffsetProviders.Push(uiIndex);
                 pvse->Push(se);
             }
 
@@ -755,8 +752,10 @@ HRESULT CSaveImage::_EncodeImage(char **ppcData, int *pcbData, const TCHAR *pszE
     if (!ppcData || !pcbData || !pszExtension || !pfi)
         return E_POINTER;
 
-    FOR_EACH_DYNARR(CodecInfo *pci, pfi->extension.vpProviders)
+    FOR_EACH_DYNARR(int idx, pfi->extension.vuiOffsetProviders)
     {
+        CodecInfo *pci = &_vCodecInfo[idx];
+
         if (pci->provider == CP_EXTENSION)
         {
             // TODO: Extension API here is not yet planned.
