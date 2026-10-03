@@ -119,5 +119,6 @@ public:
     //@End IScreenshotContext
 };
 
+HRESULT RegisterScreenshotShortcut();
 void OnScreenshotKeyPressed();
 HRESULT TakeScreenshot(OUT CScreenshotContext **ppContextOut);

@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "screenshot_manager.h"
 #include "extmgr.h"
+#include "cfgmgr.h"
 #include "notify.h"
 #include "util.h"
 
@@ -48,6 +49,8 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PTSTR pCmdL
     );
 #endif
 
+    ASSERT_KEEP(SUCCEEDED(CConfigManager::CreateInstance()));
+
     ASSERT_KEEP(SUCCEEDED(CExtensionManager::CreateInstance()));
     TCHAR szFolderRoot[MAX_PATH];
     GetModuleFileName(g_hinst, szFolderRoot, ARRAYSIZE(szFolderRoot));
@@ -69,11 +72,10 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PTSTR pCmdL
         );
     }
 
-    // TODO: Support loading a hotkey from user configuration.
     if (!(GetOSVersion()->flags & OSVF_WINE))
     {
         // This does not work on some platforms for some reason.
-        RegisterHotKey(nullptr, ID_HOTKEY_SCREENSHOT, MOD_SHIFT | MOD_WIN, 'S');
+        RegisterScreenshotShortcut();
     }
     else
     {

@@ -9,12 +9,12 @@
 #endif
 
 #define FOR_EACH(decl, array)                                                            \
-    for (size_t i = 0, __size = COUNTOF(array); i < __size; ++i)                            \
+    for (size_t i = 0, __size = ARRAYSIZE(array); i < __size; ++i)                       \
         if (bool __run = true)                                                           \
             for (decl = (array)[i]; __run; __run = false)
 
 #define FOR_EACH_DYNARR(decl, array)                                                     \
-    for (size_t i = 0, __size = (array).GetSize(); i < __size; ++i)                         \
+    for (size_t i = 0, __size = (array).GetSize(); i < __size; ++i)                      \
         if (bool __run = true)                                                           \
             for (decl = (array)[i]; __run; __run = false)
 

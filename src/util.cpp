@@ -79,6 +79,44 @@ OSVersion *GetOSVersion()
 }
 
 //
+// String manipulation
+//
+
+void _tcstrim(TCHAR *psz)
+{
+    if (!psz || !*psz)
+        return;
+
+    TCHAR *pszStart = psz;
+    TCHAR *pszEnd = nullptr;
+
+    while (*pszStart && *pszStart == TEXT(' '))
+    {
+        pszStart++;
+    }
+
+    if (!*pszStart)
+    {
+        *psz = '\0';
+        return;
+    }
+
+    pszEnd = pszStart + _tcslen(pszStart) - 1;
+    while (pszEnd > pszStart && *pszEnd == TEXT(' '))
+    {
+        pszEnd--;
+    }
+
+    *(pszEnd + 1) = '\0';
+
+    if (pszStart != psz)
+    {
+        size_t size = _tcslen(pszStart) * sizeof(TCHAR);
+        memmove_s(psz, size, pszStart, _tcslen(pszStart) + 1);
+    }
+}
+
+//
 // Path handling
 //
 

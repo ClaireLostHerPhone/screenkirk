@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "screenshot_manager.h"
 #include "screenshot_editor.h"
+#include "cfgmgr.h"
 #include "util.h"
 #include "dynarray.h"
 
@@ -12,6 +13,186 @@
 #ifdef COMPILETIME_ENABLE_WIC
     #include <wincodec.h>
 #endif
+
+struct KeyboardShortcut
+{
+    UINT uiModifiers;
+    UINT uiVirtualKey;
+};
+
+static HRESULT ParseKeyboardShortcutString(const TCHAR *psz, KeyboardShortcut *pShortcut)
+{
+    static struct KeyMap
+    {
+        const UINT uiVirtualKey;
+        const TCHAR sz[12];
+    };
+
+    static constexpr KeyMap rgModifierMap[] = {
+        { MOD_CONTROL,               TEXT("control") },
+        { MOD_CONTROL,               TEXT("ctrl") },
+        { MOD_CONTROL | MOD_LEFT,    TEXT("lcontrol") },
+        { MOD_CONTROL | MOD_RIGHT,   TEXT("rcontrol") },
+        { MOD_CONTROL | MOD_LEFT,    TEXT("lctrl") },
+        { MOD_CONTROL | MOD_RIGHT,   TEXT("rctrl") },
+        { MOD_ALT,                   TEXT("alt") },
+        { MOD_ALT,                   TEXT("menu") },
+        { MOD_ALT | MOD_LEFT,        TEXT("lalt") },
+        { MOD_ALT | MOD_RIGHT,       TEXT("ralt") },
+        { MOD_ALT | MOD_LEFT,        TEXT("lmenu") },
+        { MOD_ALT | MOD_RIGHT,       TEXT("rmenu") },
+        { MOD_SHIFT,                 TEXT("shift") },
+        { MOD_SHIFT | MOD_LEFT,      TEXT("lshift") },
+        { MOD_SHIFT | MOD_RIGHT,     TEXT("rshift") },
+        { MOD_WIN,                   TEXT("win") },
+        { MOD_WIN | MOD_LEFT,        TEXT("lwin") },
+        { MOD_WIN | MOD_RIGHT,       TEXT("rwin") },
+        { 0 },
+    };
+
+    static constexpr KeyMap rgNameMap[] = {
+        { VK_CANCEL,      TEXT("cancel") },
+        { VK_BACK,        TEXT("back") },
+        { VK_BACK,        TEXT("backspace") },
+        { VK_TAB,         TEXT("tab") },
+        { VK_CLEAR,       TEXT("clear") },
+        { VK_RETURN,      TEXT("return") },
+        { VK_RETURN,      TEXT("enter") },
+        { VK_PAUSE,       TEXT("pause") },
+        { VK_CAPITAL,     TEXT("capital") },
+        { VK_CAPITAL,     TEXT("caps") },
+        { VK_CAPITAL,     TEXT("capslock") },
+        { VK_CAPITAL,     TEXT("capslk") },
+        { VK_KANA,        TEXT("kana") },
+        { VK_HANGUL,      TEXT("hangul") },
+        { VK_JUNJA,       TEXT("junja") },
+        { VK_FINAL,       TEXT("final") },
+        { VK_HANJA,       TEXT("hanja") },
+        { VK_KANJI,       TEXT("kanji") },
+        { VK_ESCAPE,      TEXT("escape") },
+        { VK_ESCAPE,      TEXT("esc") },
+        { VK_CONVERT,     TEXT("convert") },
+        { VK_NONCONVERT,  TEXT("nonconvert") },
+        { VK_ACCEPT,      TEXT("accept") },
+        { VK_MODECHANGE,  TEXT("modechange") },
+        { VK_SPACE,       TEXT("space") },
+        { VK_SPACE,       TEXT("spc") },
+        { VK_PRIOR,       TEXT("prior") },
+        { VK_PRIOR,       TEXT("pageup") },
+        { VK_NEXT,        TEXT("next") },
+        { VK_NEXT,        TEXT("pagedown") },
+        { VK_END,         TEXT("end") },
+        { VK_HOME,        TEXT("home") },
+        { VK_LEFT,        TEXT("left") },
+        { VK_UP,          TEXT("up") },
+        { VK_RIGHT,       TEXT("right") },
+        { VK_DOWN,        TEXT("down") },
+        { VK_SELECT,      TEXT("select") },
+        { VK_PRINT,       TEXT("select") },
+        { VK_EXECUTE,     TEXT("execute") },
+        { VK_SNAPSHOT,    TEXT("snapshot") },
+        { VK_SNAPSHOT,    TEXT("printscreen") },
+        { VK_SNAPSHOT,    TEXT("prtscr") },
+        { VK_INSERT,      TEXT("insert") },
+        { VK_DELETE,      TEXT("delete") },
+        { VK_DELETE,      TEXT("del") },
+        { VK_HELP,        TEXT("help") },
+        { 0 },
+    };
+
+    size_t cb = sizeof(TCHAR) * _tcslen(psz);
+    TCHAR *pszCopy = new TCHAR[cb];
+    _tcscpy_s(pszCopy, cb, psz);
+
+    TCHAR *pszContext = nullptr;
+    TCHAR *pszToken = _tcstok_s(pszCopy, TEXT("+"), &pszContext);
+
+    UINT uiModifiers = 0;
+    UINT uiVirtualKey = 0;
+
+    while (pszToken != nullptr)
+    {
+        DBGPRINT(TEXT("Before trim: %s"), pszToken);
+        _tcstrim(pszToken);
+        DBGPRINT(TEXT("After trim: %s"), pszToken);
+
+        bool fHandled = false;
+
+        FOR_EACH(KeyMap km, rgModifierMap)
+        {
+            if (km.sz && _tcsicmp(pszToken, km.sz) == 0)
+            {
+                fHandled = true;
+                uiModifiers |= km.uiVirtualKey;
+                break;
+            }
+        }
+
+        if (!fHandled)
+        {
+            FOR_EACH(KeyMap km, rgNameMap)
+            {
+                if (km.sz && _tcsicmp(pszToken, km.sz) == 0)
+                {
+                    fHandled = true;
+                    uiVirtualKey = km.uiVirtualKey;
+                    break;
+                }
+            }
+
+            if (!fHandled)
+            {
+                if (!_tcslen(pszToken) != 1)
+                {
+                    // This is an error case. The main key should only ever be one
+                    // character long.
+                }
+
+                uiVirtualKey = pszToken[0];
+            }
+        }
+
+        DBGPRINT(TEXT("uiModifiers: %d"), uiModifiers);
+        DBGPRINT(TEXT("uiVirtualKey: %c"), uiVirtualKey);
+
+        pszToken = _tcstok_s(nullptr, TEXT("+"), &pszContext);
+    }
+
+    delete[] pszCopy;
+
+    pShortcut->uiModifiers = uiModifiers;
+    pShortcut->uiVirtualKey = uiVirtualKey;
+    return S_OK;
+}
+
+HRESULT RegisterScreenshotShortcut()
+{
+    TCHAR *pszShortcut = nullptr;
+    bool fIsAllocated = false;
+    if (FAILED(CConfigManager::GetInstance()->GetString(TEXT("ShortcutKey"), &pszShortcut)))
+    {
+        pszShortcut = TEXT("Win+Shift+S");
+    }
+    else
+    {
+        fIsAllocated = true;
+    }
+
+    HRESULT hr = E_FAIL;
+
+    KeyboardShortcut ks = { 0 };
+    hr = ParseKeyboardShortcutString(pszShortcut, &ks);
+    if (SUCCEEDED(hr))
+    {
+        BOOL fResult = RegisterHotKey(nullptr, ID_HOTKEY_SCREENSHOT, ks.uiModifiers, ks.uiVirtualKey);
+        hr = fResult ? S_OK : E_FAIL;
+    }
+
+    if (fIsAllocated)
+        CoTaskMemFree(pszShortcut);
+
+    return hr;
+}
 
 void OnScreenshotKeyPressed()
 {

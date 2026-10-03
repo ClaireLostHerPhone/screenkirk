@@ -22,6 +22,7 @@ struct OSVersion
 };
 
 OSVersion *GetOSVersion();
+void _tcstrim(TCHAR *psz);
 const TCHAR *PathFindFileName(const TCHAR *pszPath);
 const TCHAR *PathFindFileExtension(const TCHAR *pszPath);
 HRESULT PathPopFileName(TCHAR *pszPath);
