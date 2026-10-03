@@ -194,6 +194,34 @@ HRESULT RegisterScreenshotShortcut()
     return hr;
 }
 
+static DWORD WINAPI ScreenshotWindowThreadProc(void *lpParameter)
+{
+    CScreenshotContext *pScreenshotCtx = (CScreenshotContext *)lpParameter;
+    CScreenshotEditorWindow *pScreenshotWnd = CScreenshotEditorWindow::CreateAndShow(pScreenshotCtx);
+    if (!pScreenshotWnd)
+    {
+        MessageBox(nullptr,
+            TEXT("Failed to create the screenshot editor window."),
+            TEXT("screenkirk"),
+            MB_OK | MB_ICONERROR
+        );
+        delete pScreenshotCtx;
+        return 1;
+    }
+
+    MSG msg = { 0 };
+    while (GetMessage(&msg, nullptr, 0, 0))
+    {
+        if (!TranslateAccelerator(nullptr, nullptr, &msg))
+        {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+    }
+
+    return 0;
+}
+
 void OnScreenshotKeyPressed()
 {
     CScreenshotContext *pScreenshotCtx = nullptr;
@@ -201,12 +229,30 @@ void OnScreenshotKeyPressed()
     HRESULT hr = TakeScreenshot(&pScreenshotCtx);
     if (SUCCEEDED(hr))
     {
-        // TODO: Make window run in another thread.
+#ifndef _WIN16
+        HANDLE hThread = CreateThread(nullptr, 0, ScreenshotWindowThreadProc, pScreenshotCtx, 0, nullptr);
+        if (!hThread)
+        {
+            MessageBox(nullptr,
+                TEXT("Failed to create thread for the screenshot editor window."),
+                TEXT("screenkirk"),
+                MB_OK | MB_ICONERROR
+            );
+            delete pScreenshotCtx;
+        }
+#else
+        // Win16 doesn't support threads, so we just create the window directly.
         CScreenshotEditorWindow *pScreenshotWnd = CScreenshotEditorWindow::CreateAndShow(pScreenshotCtx);
         if (!pScreenshotWnd)
         {
+            MessageBox(nullptr,
+                TEXT("Failed to create the screenshot editor window."),
+                TEXT("screenkirk"),
+                MB_OK | MB_ICONERROR
+            );
             delete pScreenshotCtx;
         }
+#endif
     }
 }
 

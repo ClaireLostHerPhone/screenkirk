@@ -1689,6 +1689,8 @@ LRESULT CScreenshotEditorWindow::_OnDestroy()
         delete _pScreenshotCtx;
     if (_pFloatingToolbar)
         DestroyWindow(_pFloatingToolbar->GetHWND());
+
+    PostQuitMessage(0);
     return 0;
 }
 
