@@ -18,12 +18,6 @@
         if (bool __run = true)                                                           \
             for (decl = (array)[i]; __run; __run = false)
 
-#ifdef _WIN16
-#define CoTaskMemAlloc(x)   (malloc(x))
-#define CoTaskMemFree(x)    (free(x))
-#define CoTaskMemRealloc(x) (realloc(x))
-#endif
-
 #ifndef IID_PPV_ARGS
     //  IID_PPV_ARGS(ppType)
     //      ppType is the variable of type IType that will be filled

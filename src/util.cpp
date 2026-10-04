@@ -21,7 +21,6 @@ OSVersion *GetOSVersion()
     if (g_osVersion.dwMajorVersion != 0)
         return &g_osVersion;
 
-#ifndef _WIN16
     g_osVersion.flags |= IsWine()
         ? OSVF_WINE
         : 0;
@@ -52,7 +51,6 @@ OSVersion *GetOSVersion()
             return &g_osVersion;
         }
     }
-#endif
 
 #pragma warning(push)
 #pragma warning(disable : 4996) // Disable deprecation warning when using Windows 8 or higher SDKs.
