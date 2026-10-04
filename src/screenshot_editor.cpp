@@ -2481,6 +2481,11 @@ STDMETHODIMP CScreenshotEditorWindow::InsertObject(IScreenshotEditorObject *pObj
     return hr;
 }
 
+STDMETHODIMP CScreenshotEditorWindow::RemoveObject(IScreenshotEditorObject *pObj)
+{
+    return _RemoveObject(pObj);
+}
+
 STDMETHODIMP CScreenshotEditorWindow::InvalidateObject(IScreenshotEditorObject *pObj)
 {
     // Apart from invalidating the render object, what should this method do?
@@ -2508,6 +2513,20 @@ STDMETHODIMP CScreenshotEditorWindow::GetCursorPosition(OUT POINT *pptCursor)
 STDMETHODIMP_(HWND) CScreenshotEditorWindow::GetEditorHWND()
 {
     return GetHWND();
+}
+
+STDMETHODIMP CScreenshotEditorWindow::EnumObjects(OUT IEnumUnknown **ppEnumUnknown)
+{
+    if (!ppEnumUnknown)
+        return E_POINTER;
+
+    *ppEnumUnknown = new (std::nothrow) CEnumObjects(&_vObjs);
+    if (*ppEnumUnknown)
+    {
+        (*ppEnumUnknown)->AddRef();
+        return S_OK;
+    }
+    return E_OUTOFMEMORY;
 }
 
 HRESULT CScreenshotEditorWindow::CopyToClipboardAndAccept()
@@ -2615,6 +2634,75 @@ CScreenshotEditorWindow *CScreenshotEditorWindow::CreateAndShow(CScreenshotConte
 
     return pWnd;
 }
+
+//
+// CScreenshotEditorWindow::CEnumObjects
+//
+
+STDMETHODIMP CScreenshotEditorWindow::CEnumObjects::QueryInterface(const IID &riid, void **ppvOut)
+{
+    if (IsEqualGUID(riid, IID_IUnknown)
+        || IsEqualGUID(riid, IID_IEnumUnknown))
+    {
+        *ppvOut = static_cast<CScreenshotEditorWindow::CEnumObjects *>(this);
+        AddRef();
+        return S_OK;
+    }
+
+    return E_NOINTERFACE;
+}
+
+STDMETHODIMP CScreenshotEditorWindow::CEnumObjects::Next(ULONG celt, IUnknown **rgelt, ULONG *pceltFetched)
+{
+    if (celt == 0)
+        return S_OK;
+    if (!rgelt)
+        return E_POINTER;
+    if (celt > 1 && !pceltFetched) // The COM API demands this.
+        return E_POINTER;
+
+    size_t sizeObjArr = _pvObjs->GetSize();
+    int iFetched = 0;
+
+    for (int i = 0; i < celt && (_idx + i < sizeObjArr); i++)
+    {
+        rgelt[i] = _pvObjs->At(_idx + i);
+        iFetched++;
+        _idx++;
+    }
+
+    for (int i = 0; i < celt; i++)
+    {
+        rgelt[i]->AddRef();
+    }
+
+    if (pceltFetched)
+        *pceltFetched = iFetched;
+
+    return celt == iFetched ? S_OK : S_FALSE;
+}
+
+STDMETHODIMP CScreenshotEditorWindow::CEnumObjects::Skip(ULONG celt)
+{
+    _idx += celt;
+    return S_OK;
+}
+
+STDMETHODIMP CScreenshotEditorWindow::CEnumObjects::Reset()
+{
+    _idx = 0;
+    return S_OK;
+}
+
+STDMETHODIMP_(HRESULT __stdcall) CScreenshotEditorWindow::CEnumObjects::Clone(IEnumUnknown **ppenum)
+{
+    if (!ppenum)
+        return E_POINTER;
+
+    *ppenum = new CScreenshotEditorWindow::CEnumObjects(_pvObjs);
+    return S_OK;
+}
+
 
 //
 // CFloatingScreenshotEditorWindow

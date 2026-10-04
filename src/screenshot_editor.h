@@ -343,6 +343,27 @@ class CScreenshotEditorWindow
     DEFINE_WINDOW_CLASS("screenkirk_ScreenshotEditorWindow");
 
 private:
+    class CEnumObjects : public IEnumUnknown
+    {
+        IMPLEMENT_IUNKNOWN;
+
+    private:
+        CDynamicArray<IScreenshotEditorObject *> *_pvObjs;
+        UINT _idx;
+
+    public:
+        CEnumObjects(CDynamicArray<IScreenshotEditorObject *> *pvObjs)
+            : _pvObjs(pvObjs)
+            , _idx(0)
+        {
+        }
+
+        STDMETHODIMP Next(ULONG celt, IUnknown **rgelt, ULONG *pceltFetched) override;
+        STDMETHODIMP Skip(ULONG celt) override;
+        STDMETHODIMP Reset() override;
+        STDMETHODIMP Clone(IEnumUnknown **ppenum) override;
+    };
+
     CScreenshotContext *_pScreenshotCtx;
     CScreenshotEditorRendererGDI *_pRenderer;
     CEditHistoryManager *_pHistoryMgr;
@@ -431,10 +452,12 @@ public:
 
     //@Begin IScreenshotEditor
     STDMETHODIMP InsertObject(IScreenshotEditorObject *pObj) override;
+    STDMETHODIMP RemoveObject(IScreenshotEditorObject *pObj) override;
     STDMETHODIMP InvalidateObject(IScreenshotEditorObject *pObj) override;
     STDMETHODIMP GetScreenshotContext(OUT IScreenshotContext **ppContext) override;
     STDMETHODIMP GetCursorPosition(OUT POINT *pptCursor) override;
     STDMETHODIMP_(HWND) GetEditorHWND() override;
+    STDMETHODIMP EnumObjects(OUT IEnumUnknown **ppEnumUnknown) override;
     //@End IScreenshotEditor
 
 	CScreenshotEditorWindow()

@@ -15,7 +15,9 @@ public:
     //@End IObjectWithSite
 
     //@Begin IScreenshotEditorTool
+    STDMETHODIMP_(const TCHAR *) GetClassName() override;
     STDMETHODIMP ToolSelectionChanged(BOOL fSelected) override;
+    STDMETHODIMP OnDestroyed() override;
     STDMETHODIMP_(ULONG) GetFlags() override;
     STDMETHODIMP_(HICON) GetToolIcon() override;
     STDMETHODIMP GetToolName(OUT const TCHAR **pszOut) override;
@@ -29,6 +31,12 @@ public:
     STDMETHODIMP ApplyCursor() override;
     STDMETHODIMP OnSelectionChange(RECT *prcNew) override;
     //@End IScreenshotEditorTool
+
+    CTextEditorTool()
+        : _pUnkSite(nullptr)
+        , _pEditor(nullptr)
+    {
+    }
 };
 
 // {97378D4C-1FA7-4F10-9626-426A879BB01A}

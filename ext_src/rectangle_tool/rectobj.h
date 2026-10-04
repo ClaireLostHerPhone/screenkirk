@@ -31,6 +31,7 @@ public:
     //@End IObjectWithSite
 
     //@Begin IScreenshotRendererObject
+    STDMETHODIMP_(const TCHAR *) GetClassName() override;
     STDMETHODIMP_(ULONG) GetFlags() override;
     STDMETHODIMP InsertedIntoDocument() override;
     STDMETHODIMP GetLogicalRect(IN RECT *prc) override;

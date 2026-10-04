@@ -27,6 +27,53 @@ DECLARE_INTERFACE(IScreenshotContext)
     STDMETHOD_(THIS_ SIZE, GetVirtualScreenSize)() PURE;
 };
 
+#undef INTERFACE
+#define INTERFACE IScreenshotEditor
+DECLARE_INTERFACE_IID_(IScreenshotEditor, IUnknown, "{0A573BD7-2C24-4602-A842-ACC82B12E1F1}")
+{
+    STDMETHOD(QueryInterface)(THIS_ REFIID riid, OUT void **ppvOut) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    /**
+     * Inserts an object into the screenshot document.
+     */
+    STDMETHOD(InsertObject)(THIS_ interface IScreenshotEditorObject *pObj) PURE;
+
+    /**
+     * Removes an object from the screenshot document.
+     */
+    STDMETHOD(RemoveObject)(THIS_ interface IScreenshotEditorObject *pObj) PURE;
+
+    /**
+     * Invalidates an object's visual.
+     */
+    STDMETHOD(InvalidateObject)(THIS_ interface IScreenshotEditorObject *pObj) PURE;
+
+    /**
+     * Gets the context of the screenshot document.
+     */
+    STDMETHOD(GetScreenshotContext)(THIS_ OUT IScreenshotContext **ppContextOut) PURE;
+
+    /**
+     * Gets the position of the mouse cursor relative to the document.
+     */
+    STDMETHOD(GetCursorPosition)(THIS_ OUT POINT *pptCursor) PURE;
+
+    /**
+     * Gets the handle to the window containing the document editor.
+     */
+    STDMETHOD_(HWND, GetEditorHWND)(THIS) PURE;
+
+    /**
+     * Enumerates all objects in the editor.
+     */
+    STDMETHOD(EnumObjects)(THIS_ OUT IEnumUnknown **ppEnumUnknown) PURE;
+};
+// {0A573BD7-2C24-4602-A842-ACC82B12E1F1}
+DEFINE_GUID(IID_IScreenshotEditor,
+    0xa573bd7, 0x2c24, 0x4602, 0xa8, 0x42, 0xac, 0xc8, 0x2b, 0x12, 0xe1, 0xf1);
+
 //
 // As design speculation, I would just say that it is probably best to implement an object
 // and at least its primary renderer in the same class. They will usually benefit from
@@ -71,6 +118,7 @@ DEFINE_GUID(IID_IScreenshotEditorObjectRendererGDI,
 #define SSEOF_NODRAG (1 << 0)
 #define SSEOF_NOBACKBUFFER (1 << 1)
 #define SSEOF_MAYFLATTEN (1 << 2)
+#define SSEOF_FIXEDZORDER (1 << 3)
 //@End IScreenshotEditorObject::GetFlags() flags
 
 /**
@@ -94,6 +142,11 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorObject, IObjectWithSite, "{841C133A-9960
      * Gets various flags used to control the interaction of the object.
      */
     STDMETHOD_(ULONG, GetFlags)(THIS) PURE;
+
+    /**
+     * Gets the class name of the object.
+     */
+    STDMETHOD_(const QS_TCHAR *, GetClassName)(THIS) PURE;
 
     /**
      * Called when the object is inserted into the document.
@@ -137,43 +190,6 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorObject, IObjectWithSite, "{841C133A-9960
 DEFINE_GUID(IID_IScreenshotEditorObject,
     0x841c133a, 0x9960, 0x44c3, 0x9e, 0x95, 0xc1, 0x34, 0x9c, 0x73, 0x14, 0x1);
 
-#undef INTERFACE
-#define INTERFACE IScreenshotEditor
-DECLARE_INTERFACE_IID_(IScreenshotEditor, IUnknown, "{0A573BD7-2C24-4602-A842-ACC82B12E1F1}")
-{
-    STDMETHOD(QueryInterface)(THIS_ REFIID riid, OUT void **ppvOut) PURE;
-    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
-    STDMETHOD_(ULONG, Release)(THIS) PURE;
-
-    /**
-     * Inserts an object into the screenshot document.
-     */
-    STDMETHOD(InsertObject)(THIS_ IScreenshotEditorObject *pObj) PURE;
-
-    /**
-     * Invalidates an object's visual.
-     */
-    STDMETHOD(InvalidateObject)(THIS_ IScreenshotEditorObject *pObj) PURE;
-
-    /**
-     * Gets the context of the screenshot document.
-     */
-    STDMETHOD(GetScreenshotContext)(THIS_ OUT IScreenshotContext **ppContextOut) PURE;
-
-    /**
-     * Gets the position of the mouse cursor relative to the document.
-     */
-    STDMETHOD(GetCursorPosition)(THIS_ OUT POINT *pptCursor) PURE;
-
-    /**
-     * Gets the handle to the window containing the document editor.
-     */
-    STDMETHOD_(HWND, GetEditorHWND)(THIS) PURE;
-};
-// {0A573BD7-2C24-4602-A842-ACC82B12E1F1}
-DEFINE_GUID(IID_IScreenshotEditor,
-    0xa573bd7, 0x2c24, 0x4602, 0xa8, 0x42, 0xac, 0xc8, 0x2b, 0x12, 0xe1, 0xf1);
-
 //@Begin IScreenshotEditorTool::GetFlags() flags
 #define SSETF_DRAWSELECTION (1 << 0)
 //@End IScreenshotEditorTool::GetFlags() flags
@@ -194,9 +210,19 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorTool, IObjectWithSite, "{1C093E9E-696B-4
     STDMETHOD(GetSite)(THIS_ REFIID riid, void **ppvSite) PURE;
 
     /**
+     * Gets the class name of the tool.
+     */
+    STDMETHOD_(const QS_TCHAR *, GetClassName)(THIS) PURE;
+
+    /**
      * Called when the tool is selected.
      */
     STDMETHOD(ToolSelectionChanged)(THIS_ BOOL fSelected) PURE;
+
+    /**
+     * Called when the tool is destroyed, i.e. because the user closed the document editor.
+     */
+    STDMETHOD(OnDestroyed)(THIS) PURE;
 
     /**
      * Gets various flags used to control the interaction of the tool.

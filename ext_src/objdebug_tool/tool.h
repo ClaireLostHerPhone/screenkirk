@@ -1,20 +1,12 @@
 #pragma once
 #include "pch.h"
+#include "dbgwnd.h"
 
-class CRectangleTool : public IScreenshotEditorTool
+class CObjectDebugTool : public IScreenshotEditorTool
 {
-public:
-    enum RectangleToolType
-    {
-        TYPE_SOLID,
-        TYPE_HIGHLIGHTER,
-    };
-
-private:
     IUnknown *_pUnkSite;
     IScreenshotEditor *_pEditor;
-    IScreenshotEditorObject *_pObjCur;
-    RectangleToolType _type;
+    CObjectDebugWindow *_pWnd;
 
 public:
     IMPLEMENT_IUNKNOWN;
@@ -42,20 +34,14 @@ public:
     STDMETHODIMP OnSelectionChange(RECT *prcNew) override;
     //@End IScreenshotEditorTool
 
-    CRectangleTool(RectangleToolType type)
-        : _uRefCount(0)
-        , _pUnkSite(nullptr)
+    CObjectDebugTool()
+        : _pUnkSite(nullptr)
         , _pEditor(nullptr)
-        , _pObjCur(nullptr)
-        , _type(type)
+        , _pWnd(nullptr)
     {
     }
 };
 
-// {FAA1F25A-7882-4061-A8FD-E3CB2AE83400}
-DEFINE_GUID(CLSID_RectangleTool,
-    0xfaa1f25a, 0x7882, 0x4061, 0xa8, 0xfd, 0xe3, 0xcb, 0x2a, 0xe8, 0x34, 0x0);
-
-// {FAA1F25A-7882-4061-A8FD-E3CB2AE83401}
-DEFINE_GUID(CLSID_RectangleHighlighterTool,
-    0xfaa1f25a, 0x7882, 0x4061, 0xa8, 0xfd, 0xe3, 0xcb, 0x2a, 0xe8, 0x34, 0x1);
+// {97378D4C-1FA7-4F10-9626-426A879BB01A}
+DEFINE_GUID(CLSID_TextEditorTool,
+    0x97378d4c, 0x1fa7, 0x4f10, 0x96, 0x26, 0x42, 0x6a, 0x87, 0x9b, 0xb0, 0x1a);

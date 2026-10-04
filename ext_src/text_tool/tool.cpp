@@ -46,7 +46,17 @@ STDMETHODIMP CTextEditorTool::SetSite(IUnknown *pUnkSite)
 }
 
 
+STDMETHODIMP_(const TCHAR *) CTextEditorTool::GetClassName()
+{
+    return TEXT("text_tool.CTextEditorTool");
+}
+
 STDMETHODIMP CTextEditorTool::ToolSelectionChanged(BOOL fSelected)
+{
+    return S_OK;
+}
+
+STDMETHODIMP CTextEditorTool::OnDestroyed()
 {
     return S_OK;
 }

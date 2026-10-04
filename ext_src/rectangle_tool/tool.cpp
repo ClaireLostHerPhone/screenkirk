@@ -47,6 +47,16 @@ STDMETHODIMP CRectangleTool::SetSite(IUnknown *pUnkSite)
     return hr;
 }
 
+STDMETHODIMP_(const TCHAR *) CRectangleTool::GetClassName()
+{
+    return TEXT("rectangle_tool.CRectangleTool");
+}
+
+STDMETHODIMP CRectangleTool::OnDestroyed()
+{
+    return S_OK;
+}
+
 STDMETHODIMP CRectangleTool::ToolSelectionChanged(BOOL fSelected)
 {
     return S_OK;

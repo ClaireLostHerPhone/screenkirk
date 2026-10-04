@@ -52,6 +52,11 @@ STDMETHODIMP CRectangleObject::SetSite(IUnknown *pUnkSite)
     return hr;
 }
 
+STDMETHODIMP_(const TCHAR *) CRectangleObject::GetClassName()
+{
+    return TEXT("rectangle_tool.CRectangleObject");
+}
+
 STDMETHODIMP_(ULONG __stdcall) CRectangleObject::GetFlags()
 {
     ULONG uFlags = 0;
