@@ -39,7 +39,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PTSTR pCmdL
     FILE *fpIn;
     freopen_s(&fpIn, "CONIN$", "r", stdin);
 
-    _tprintf(TEXT("Welcome to codename screenkirk ver. alpha 1.0!\n"));
+    _tprintf(TEXT("Welcome to ") QS_APP_FULL_BRAND TEXT("!\n"));
 
     OSVersion *posv = GetOSVersion();
     _tprintf(

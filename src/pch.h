@@ -8,6 +8,9 @@
 #include "screenkirk.h"
 #include "portable.h"
 
+#define QS_APP_NAME         TEXT("codename screenkirk")
+#define QS_VER_STRING       TEXT("ver. alpha 1.0")
+#define QS_APP_FULL_BRAND   QS_APP_NAME TEXT(" ") QS_VER_STRING
 
 #define TOK_CAT_INNER(a, b) a##b
 #define TOK_CAT(a, b) TOK_CAT_INNER(a, b)
