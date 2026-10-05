@@ -109,14 +109,14 @@ LRESULT CEditorToolbar::_OnCreate(CREATESTRUCT *pcs)
         ab.nID = (UINT_PTR)hbmMove;
         SendMessage(_hwndToolbar, TB_ADDBITMAP, 1, (LPARAM)&ab);
 
-        rgtbButtons[i].idCommand = CEditorActionsStrip::IDM_TOOLFIRST + SSET_SELECT;
+        rgtbButtons[i].idCommand = SSET_SELECT;
         rgtbButtons[i].dwData = (INT_PTR)TEXT("Select");
         rgtbButtons[i].fsState = TBSTATE_ENABLED;
         rgtbButtons[i].fsStyle = BTNS_CHECK;
         rgtbButtons[i].iBitmap = 0;
 
         i++;
-        rgtbButtons[i].idCommand = CEditorActionsStrip::IDM_TOOLFIRST + SSET_DRAG;
+        rgtbButtons[i].idCommand = SSET_DRAG;
         rgtbButtons[i].dwData = (INT_PTR)TEXT("Move");
         rgtbButtons[i].fsState = TBSTATE_ENABLED;
         rgtbButtons[i].fsStyle = BTNS_CHECK;
@@ -128,7 +128,7 @@ LRESULT CEditorToolbar::_OnCreate(CREATESTRUCT *pcs)
             if (SUCCEEDED(_pEditor->GetExtensionToolInfo(j, &eti)))
             {
                 i++;
-                rgtbButtons[i].idCommand = CEditorActionsStrip::IDM_TOOLFIRST + eti.idTool;
+                rgtbButtons[i].idCommand = eti.idTool;
                 rgtbButtons[i].dwData = (INT_PTR)eti.pszToolName;
                 rgtbButtons[i].fsState = TBSTATE_ENABLED;
                 rgtbButtons[i].fsStyle = BTNS_CHECK;
@@ -150,13 +150,7 @@ LRESULT CEditorToolbar::_OnCreate(CREATESTRUCT *pcs)
 
 LRESULT CEditorToolbar::_OnCommand(WPARAM wParam, LPARAM lParam)
 {
-    HWND hwndEditor = _pEditor->GetHWND();
-
-    if (LOWORD(wParam) >= CEditorActionsStrip::IDM_TOOLFIRST)
-    {
-        SendMessage(hwndEditor, CScreenshotEditorWindow::WM_SSE_CHANGETOOL, LOWORD(wParam) - CEditorActionsStrip::IDM_TOOLFIRST, 0);
-    }
-
+    SendMessage(_pEditor->GetHWND(), CScreenshotEditorWindow::WM_SSE_CHANGETOOL, LOWORD(wParam), 0);
     return 0;
 }
 
@@ -238,7 +232,7 @@ HRESULT CEditorToolbar::SelectOrdinalTool(int idx)
         TBBUTTON tbb;
         SendMessage(_hwndToolbar, TB_GETBUTTON, idx - 1, (LPARAM)&tbb);
 
-        SendMessage(_pEditor->GetHWND(), CScreenshotEditorWindow::WM_SSE_CHANGETOOL, tbb.idCommand - CEditorActionsStrip::IDM_TOOLFIRST, 0);
+        SendMessage(_pEditor->GetHWND(), CScreenshotEditorWindow::WM_SSE_CHANGETOOL, tbb.idCommand, 0);
         return S_OK;
     }
 
@@ -250,7 +244,7 @@ HRESULT CEditorToolbar::OnToolChanged(ScreenshotEditorTool toolNew)
     ASSERT_KEEP(SUCCEEDED(_UnselectTool()));
 
     // If the requested tool has no toolbar item, then this will supposedly fail.
-    ASSERT_KEEP(SendMessage(_hwndToolbar, TB_CHECKBUTTON, toolNew + CEditorActionsStrip::IDM_TOOLFIRST, TRUE));
+    ASSERT_KEEP(SendMessage(_hwndToolbar, TB_CHECKBUTTON, toolNew, TRUE));
 
     return S_OK;
 }
@@ -737,10 +731,7 @@ LRESULT CEditorFloatingToolbar::_OnCommand(WPARAM wParam, LPARAM lParam)
 {
     if (LOWORD(wParam) >= CEditorActionsStrip::IDM_TOOLFIRST)
     {
-        // TODO: Shift the wParam by IDM_TOOLFIRST in the future. It's a bit weird for the
-        // tools toolbar to be aware of this implementation detail from the action strip and
-        // floating toolbar.
-        SendMessage(_pToolbarTools->GetHWND(), WM_COMMAND, wParam, lParam);
+        SendMessage(_pToolbarTools->GetHWND(), WM_COMMAND, wParam - CEditorActionsStrip::IDM_TOOLFIRST, lParam);
     }
     else switch (LOWORD(wParam))
     {
