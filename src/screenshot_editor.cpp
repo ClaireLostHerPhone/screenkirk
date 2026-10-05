@@ -270,6 +270,11 @@ LRESULT CEditorActionsStrip::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
             return _OnCreate(pcs);
         }
 
+        case WM_DESTROY:
+        {
+            return _OnDestroy();
+        }
+
         case WM_SIZE:
         {
             int iWidth = LOWORD(lParam);
@@ -338,15 +343,40 @@ LRESULT CEditorActionsStrip::_OnCreate(CREATESTRUCT *pcs)
     SendMessage(_hwndActions, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
     SendMessage(_hwndActions, TB_SETEXTENDEDSTYLE, 0, TBSTYLE_EX_DOUBLEBUFFER | TBSTYLE_EX_DRAWDDARROWS);
 
+    _LoadIcons();
+
     TBBUTTON rgtbButTools[4] = { 0 };
     {
-        // Eventually, I want to make this load icons from alternative sources (perhaps
-        // shell32 or imageres) as the operating system supports it. This is fine for now
-        // though.
         TBADDBITMAP ab;
         ab.hInst = HINST_COMMCTRL;
         ab.nID = IDB_STD_SMALL_COLOR;
         SendMessage(_hwndActions, TB_ADDBITMAP, 15, (LPARAM)&ab);
+
+        int iIconIdx = 15;
+
+        const int iIconDiscard = iIconIdx++;
+        {
+            TBADDBITMAP ab2;
+            ab2.hInst = nullptr;
+            ab2.nID = (UINT_PTR)_hbmIconDiscard;
+            SendMessage(_hwndActions, TB_ADDBITMAP, 1, (LPARAM)&ab2);
+        }
+
+        const int iIconCopy = iIconIdx++;
+        {
+            TBADDBITMAP ab2;
+            ab2.hInst = nullptr;
+            ab2.nID = (UINT_PTR)_hbmIconCopy;
+            SendMessage(_hwndActions, TB_ADDBITMAP, 1, (LPARAM)&ab2);
+        }
+
+        const int iIconSave = iIconIdx++;
+        {
+            TBADDBITMAP ab2;
+            ab2.hInst = nullptr;
+            ab2.nID = (UINT_PTR)_hbmIconSave;
+            SendMessage(_hwndActions, TB_ADDBITMAP, 1, (LPARAM)&ab2);
+        }
 
         int i = 0;
 
@@ -361,26 +391,38 @@ LRESULT CEditorActionsStrip::_OnCreate(CREATESTRUCT *pcs)
         rgtbButTools[i].iString = (INT_PTR)TEXT("Copy");
         rgtbButTools[i].fsState = TBSTATE_ENABLED;
         rgtbButTools[i].fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE;
-        rgtbButTools[i].iBitmap = STD_COPY;
+        rgtbButTools[i].iBitmap = _hbmIconCopy ? iIconCopy : STD_COPY;
 
         i++;
         rgtbButTools[i].idCommand = IDM_SAVE;
         rgtbButTools[i].iString = (INT_PTR)TEXT("Save");
         rgtbButTools[i].fsState = TBSTATE_ENABLED;
         rgtbButTools[i].fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE;
-        rgtbButTools[i].iBitmap = STD_FILESAVE;
+        rgtbButTools[i].iBitmap = _hbmIconSave ? iIconSave : STD_FILESAVE;
 
         i++;
         rgtbButTools[i].idCommand = IDM_DISCARD;
         rgtbButTools[i].iString = (INT_PTR)TEXT("Discard");
         rgtbButTools[i].fsState = TBSTATE_ENABLED;
         rgtbButTools[i].fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE;
-        rgtbButTools[i].iBitmap = STD_DELETE;
+        rgtbButTools[i].iBitmap = _hbmIconDiscard ? iIconDiscard : STD_DELETE;
     }
 
     SendMessage(_hwndActions, TB_ADDBUTTONS, ARRAYSIZE(rgtbButTools), (LPARAM)&rgtbButTools);
 
     return DefWindowProc(_hwnd, WM_CREATE, 0, (LPARAM)pcs);
+}
+
+LRESULT CEditorActionsStrip::_OnDestroy()
+{
+    if (_hbmIconDiscard)
+        DeleteObject(_hbmIconDiscard);
+    if (_hbmIconCopy)
+        DeleteObject(_hbmIconCopy);
+    if (_hbmIconSave)
+        DeleteObject(_hbmIconSave);
+
+    return DefWindowProc(_hwnd, WM_DESTROY, 0, 0);
 }
 
 LRESULT CEditorActionsStrip::_OnCommand(WPARAM wParam, LPARAM lParam)
@@ -437,6 +479,54 @@ LRESULT CEditorActionsStrip::_OnNotify(NMHDR *pnmh, WPARAM wParam, bool *pfHandl
     }
 
     return 0;
+}
+
+HRESULT CEditorActionsStrip::_LoadIcons()
+{
+    if (GetOSVersion()->dwMajorVersion >= 5 && !(GetOSVersion()->dwMajorVersion == 5 && GetOSVersion()->dwMinorVersion < 1))
+    {
+        HMODULE hmShell32 = LoadLibrary(TEXT("shell32.dll"));
+
+        HICON hiconDiscard = (HICON)LoadImage(hmShell32, MAKEINTRESOURCE(240), IMAGE_ICON, 16, 16, 0);
+        if (hiconDiscard)
+        {
+            _hbmIconDiscard = _HICONToHBITMAP(hiconDiscard);
+        }
+
+        HICON hiconCopy = (HICON)LoadImage(hmShell32, MAKEINTRESOURCE(243), IMAGE_ICON, 16, 16, 0);
+        if (hiconCopy)
+        {
+            _hbmIconCopy = _HICONToHBITMAP(hiconCopy);
+        }
+
+        HICON hiconSave = (HICON)LoadImage(hmShell32, MAKEINTRESOURCE(16761), IMAGE_ICON, 16, 16, 0);
+        if (hiconSave)
+        {
+            _hbmIconSave = _HICONToHBITMAP(hiconSave);
+        }
+        else
+        {
+            // Windows XP does not have this icon, so we'll take it from the shell icons set
+            // instead.
+            // TODO: Implement!
+        }
+
+        FreeLibrary(hmShell32);
+    }
+
+    return S_OK;
+}
+
+HBITMAP CEditorActionsStrip::_HICONToHBITMAP(HICON hicon)
+{
+    ICONINFO ii;
+    if (GetIconInfo(hicon, &ii))
+    {
+        DeleteObject(ii.hbmMask);
+        return ii.hbmColor;
+    }
+
+    return nullptr;
 }
 
 // static

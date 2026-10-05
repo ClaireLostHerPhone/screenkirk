@@ -85,13 +85,20 @@ class CEditorActionsStrip : public CWindow<CEditorActionsStrip>
 private:
     class CScreenshotEditorWindow *_pEditor;
     HWND _hwndActions;
+    HBITMAP _hbmIconDiscard;
+    HBITMAP _hbmIconSave;
+    HBITMAP _hbmIconCopy;
 
 protected:
     LRESULT v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override;
 
     LRESULT _OnCreate(CREATESTRUCT *pcs);
+    LRESULT _OnDestroy();
     LRESULT _OnCommand(WPARAM wParam, LPARAM lParam);
     LRESULT _OnNotify(NMHDR *pnmh, WPARAM wParam, bool *pfHandled);
+
+    HRESULT _LoadIcons();
+    HBITMAP _HICONToHBITMAP(HICON hicon);
 
 public:
     enum Command
@@ -114,6 +121,9 @@ public:
     CEditorActionsStrip()
         : _pEditor(nullptr)
         , _hwndActions(nullptr)
+        , _hbmIconDiscard(nullptr)
+        , _hbmIconCopy(nullptr)
+        , _hbmIconSave(nullptr)
     {
     }
 };
