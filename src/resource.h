@@ -2,5 +2,5 @@
 
 #define IDI_APP 100
 
-#define IDB_TOOLSELECT 200
-#define IDB_TOOLMOVE   201
+#define IDI_TOOLSELECT 200
+#define IDI_TOOLMOVE   201

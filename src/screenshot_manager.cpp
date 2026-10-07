@@ -449,20 +449,20 @@ HRESULT CSaveImage::OpenSaveDialog()
     }
 
     HANDLE hf = CreateFile(szFileName, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (hf == INVALID_HANDLE_VALUE)
+    if (hf != INVALID_HANDLE_VALUE)
     {
-        // TODO: This path leaks!
-        return E_FAIL;
+        DWORD dwBytesWritten = 0;
+        WriteFile(hf, pcData, cbData, &dwBytesWritten, nullptr);
+        hr = S_OK;
+    }
+    else
+    {
+        hr = HRESULT_FROM_WIN32(GetLastError());
     }
 
-    DWORD dwBytesWritten = 0;
-    WriteFile(hf, pcData, cbData, &dwBytesWritten, nullptr);
-
     delete[] pcData;
-
     CloseHandle(hf);
-
-    return S_OK;
+    return hr;
 }
 
 HRESULT CSaveImage::FetchSupportedCodecs()

@@ -19,7 +19,7 @@ public:
     STDMETHODIMP ToolSelectionChanged(BOOL fSelected) override;
     STDMETHODIMP OnDestroyed() override;
     STDMETHODIMP_(ULONG) GetFlags() override;
-    STDMETHODIMP_(HICON) GetToolIcon() override;
+    STDMETHODIMP_(HICON) GetToolIcon(SIZE size) override;
     STDMETHODIMP GetToolName(OUT const TCHAR **pszOut) override;
     STDMETHODIMP OnKeyDown(int iVirtualKey, LPARAM lParam) override;
     STDMETHODIMP OnKeyUp(int iVirtualKey, LPARAM lParam) override;
@@ -33,10 +33,13 @@ public:
     //@End IScreenshotEditorTool
 
     CTextEditorTool()
-        : _pUnkSite(nullptr)
+        : _uRefCount(0)
+        , _pUnkSite(nullptr)
         , _pEditor(nullptr)
     {
     }
+
+    ~CTextEditorTool();
 };
 
 // {97378D4C-1FA7-4F10-9626-426A879BB01A}

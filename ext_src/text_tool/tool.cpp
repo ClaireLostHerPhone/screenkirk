@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "tool.h"
+#include "resource.h"
 
 STDMETHODIMP CTextEditorTool::QueryInterface(const IID &riid, void **ppvOut)
 {
@@ -66,9 +67,9 @@ STDMETHODIMP_(ULONG) CTextEditorTool::GetFlags()
     return 0;
 }
 
-STDMETHODIMP_(HICON) CTextEditorTool::GetToolIcon()
+STDMETHODIMP_(HICON) CTextEditorTool::GetToolIcon(SIZE size)
 {
-    return nullptr;
+    return (HICON)LoadImage(g_hinst, MAKEINTRESOURCE(IDI_TEXT), IMAGE_ICON, size.cx, size.cy, LR_DEFAULTCOLOR);
 }
 
 STDMETHODIMP CTextEditorTool::GetToolName(OUT const TCHAR **pszOut)
@@ -122,4 +123,9 @@ STDMETHODIMP CTextEditorTool::ApplyCursor()
 STDMETHODIMP CTextEditorTool::OnSelectionChange(RECT *prcNew)
 {
     return E_NOTIMPL;
+}
+
+CTextEditorTool::~CTextEditorTool()
+{
+
 }

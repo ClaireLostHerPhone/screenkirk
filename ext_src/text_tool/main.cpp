@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "extension.h"
 
+HINSTANCE g_hinst = nullptr;
+
 //
 // CExtensionClassFactory
 //
@@ -93,6 +95,8 @@ STDAPI DllCanUnloadNow()
 
 BOOL WINAPI DllMain(HINSTANCE hInstance, DWORD fdwReason, void *lpvReserved)
 {
+    g_hinst = hInstance;
+
     switch (fdwReason)
     {
         case DLL_PROCESS_ATTACH:

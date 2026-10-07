@@ -69,6 +69,21 @@ DECLARE_INTERFACE_IID_(IScreenshotEditor, IUnknown, "{0A573BD7-2C24-4602-A842-AC
      * Enumerates all objects in the editor.
      */
     STDMETHOD(EnumObjects)(THIS_ OUT IEnumUnknown **ppEnumUnknown) PURE;
+
+    /**
+     * Gets the selected region for the screenshot.
+     */
+    STDMETHOD(GetSelectedRegion)(THIS_ RECT *prc) PURE;
+
+    /**
+     * Sets the selected region for the screenshot.
+     */
+    STDMETHOD(SetSelectedRegion)(THIS_ RECT *prc) PURE;
+
+    /**
+     * Sets the selected object in the screenshot editor.
+     */
+    STDMETHOD(SetSelectedObject)(THIS_ interface IScreenshotEditorObject *pObj) PURE;
 };
 // {0A573BD7-2C24-4602-A842-ACC82B12E1F1}
 DEFINE_GUID(IID_IScreenshotEditor,
@@ -232,7 +247,7 @@ DECLARE_INTERFACE_IID_(IScreenshotEditorTool, IObjectWithSite, "{1C093E9E-696B-4
     /**
      * Gets the tool icon to be displayed in the toolbox.
      */
-    STDMETHOD_(HICON, GetToolIcon)(THIS) PURE;
+    STDMETHOD_(HICON, GetToolIcon)(THIS_ SIZE size) PURE;
 
     /**
      * Gets the name of the tool to be displayed in a tooltip when hovering the tool

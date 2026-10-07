@@ -242,3 +242,15 @@ HRESULT CopyBitmap(HBITMAP *phbmDest, HBITMAP hbmSrc, RECT *prcCrop)
 
     return hr;
 }
+
+HBITMAP HICONToHBITMAP(HICON hicon)
+{
+    ICONINFO ii;
+    if (GetIconInfo(hicon, &ii))
+    {
+        DeleteObject(ii.hbmMask);
+        return ii.hbmColor;
+    }
+
+    return nullptr;
+}

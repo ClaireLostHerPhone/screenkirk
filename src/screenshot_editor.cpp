@@ -22,6 +22,11 @@ LRESULT CEditorToolbar::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
             return _OnCreate(pcs);
         }
 
+        case WM_DESTROY:
+        {
+            return _OnDestroy();
+        }
+
         case WM_SIZE:
         {
             int iWidth = LOWORD(lParam);
@@ -97,42 +102,93 @@ LRESULT CEditorToolbar::_OnCreate(CREATESTRUCT *pcs)
     {
         int &i = cSuccessfulTools;
 
-        // This bitmap loading routine is bad (I want to load from icons anyway), but it
-        // works for now. It actually leaks.
-        HBITMAP hbmSelect = (HBITMAP)LoadImage(g_hinst, MAKEINTRESOURCE(IDB_TOOLSELECT), IMAGE_BITMAP, 16, 16, LR_DEFAULTCOLOR);
-        HBITMAP hbmMove = (HBITMAP)LoadImage(g_hinst, MAKEINTRESOURCE(IDB_TOOLMOVE), IMAGE_BITMAP, 16, 16, LR_DEFAULTCOLOR);
+        int iSizeIcon = MulDiv(16, 96, _uDpi);
+        HICON hiconSelect = (HICON)LoadImage(g_hinst, MAKEINTRESOURCE(IDI_TOOLSELECT), IMAGE_ICON, iSizeIcon, iSizeIcon, LR_DEFAULTCOLOR);
+        HICON hiconMove = (HICON)LoadImage(g_hinst, MAKEINTRESOURCE(IDI_TOOLMOVE), IMAGE_ICON, iSizeIcon, iSizeIcon, LR_DEFAULTCOLOR);
 
-        TBADDBITMAP ab;
-        ab.hInst = nullptr;
-        ab.nID = (UINT_PTR)hbmSelect;
-        SendMessage(_hwndToolbar, TB_ADDBITMAP, 1, (LPARAM)&ab);
-        ab.nID = (UINT_PTR)hbmMove;
-        SendMessage(_hwndToolbar, TB_ADDBITMAP, 1, (LPARAM)&ab);
+        int idxIcon = 0;
+
+        int idxIconSelect = 0;
+        int idxIconMove = 0;
+
+        {
+            HBITMAP hbm = HICONToHBITMAP(hiconSelect);
+            _vhbmIcons.Push(hbm);
+            DestroyIcon(hiconSelect);
+
+            TBADDBITMAP ab;
+            ab.hInst = nullptr;
+            ab.nID = (UINT_PTR)hbm;
+            SendMessage(_hwndToolbar, TB_ADDBITMAP, 1, (LPARAM)&ab);
+            idxIconSelect = idxIcon++;
+        }
+
+        {
+            HBITMAP hbm = HICONToHBITMAP(hiconMove);
+            _vhbmIcons.Push(hbm);
+            DestroyIcon(hiconMove);
+
+            TBADDBITMAP ab;
+            ab.hInst = nullptr;
+            ab.nID = (UINT_PTR)hbm;
+            SendMessage(_hwndToolbar, TB_ADDBITMAP, 1, (LPARAM)&ab);
+            idxIconMove = idxIcon++;
+        }
 
         rgtbButtons[i].idCommand = SSET_SELECT;
         rgtbButtons[i].dwData = (INT_PTR)TEXT("Select");
         rgtbButtons[i].fsState = TBSTATE_ENABLED;
         rgtbButtons[i].fsStyle = BTNS_CHECK;
-        rgtbButtons[i].iBitmap = 0;
+        rgtbButtons[i].iBitmap = idxIconSelect;
 
         i++;
         rgtbButtons[i].idCommand = SSET_DRAG;
         rgtbButtons[i].dwData = (INT_PTR)TEXT("Move");
         rgtbButtons[i].fsState = TBSTATE_ENABLED;
         rgtbButtons[i].fsStyle = BTNS_CHECK;
-        rgtbButtons[i].iBitmap = 1;
+        rgtbButtons[i].iBitmap = idxIconMove;
 
         for (int j = 0; j < _pEditor->GetExtensionToolCount(); j++)
         {
             ExtensionToolInfo eti;
             if (SUCCEEDED(_pEditor->GetExtensionToolInfo(j, &eti)))
             {
+                SIZE size;
+                size.cx = size.cy = MulDiv(16, 96, _uDpi);
+                HICON hiconExtTool = eti.pTool->GetToolIcon(size);
+                int idxExtToolIcon = 0;
+                if (hiconExtTool)
+                {
+                    HBITMAP hbm = HICONToHBITMAP(hiconExtTool);
+                    _vhbmIcons.Push(hbm);
+                    DestroyIcon(hiconExtTool);
+
+                    TBADDBITMAP ab;
+                    ab.hInst = nullptr;
+                    ab.nID = (UINT_PTR)hbm;
+                    SendMessage(_hwndToolbar, TB_ADDBITMAP, 1, (LPARAM)&ab);
+                    idxExtToolIcon = idxIcon++;
+                }
+                else
+                {
+                    HBITMAP hbm = nullptr;
+                    if (SUCCEEDED(_GenerateToolIcon(eti.pszToolName, &hbm)))
+                    {
+                        _vhbmIcons.Push(hbm);
+                        TBADDBITMAP ab;
+                        ab.hInst = nullptr;
+                        ab.nID = (UINT_PTR)hbm;
+                        SendMessage(_hwndToolbar, TB_ADDBITMAP, 1, (LPARAM)&ab);
+                        idxExtToolIcon = idxIcon++;
+                    }
+                }
+
                 i++;
                 rgtbButtons[i].idCommand = eti.idTool;
                 rgtbButtons[i].dwData = (INT_PTR)eti.pszToolName;
                 rgtbButtons[i].fsState = TBSTATE_ENABLED;
                 rgtbButtons[i].fsStyle = BTNS_CHECK;
-                rgtbButtons[i].iBitmap = 1; // TODO: What to do here?
+                rgtbButtons[i].iBitmap = idxExtToolIcon;
             }
             else
             {
@@ -146,6 +202,16 @@ LRESULT CEditorToolbar::_OnCreate(CREATESTRUCT *pcs)
     delete[] rgtbButtons;
 
     return DefWindowProc(_hwnd, WM_CREATE, 0, (LPARAM)pcs);
+}
+
+LRESULT CEditorToolbar::_OnDestroy()
+{
+    FOR_EACH_DYNARR(HBITMAP hbm, _vhbmIcons)
+    {
+        DeleteObject(hbm);
+    }
+
+    return DefWindowProc(_hwnd, WM_DESTROY, 0, 0);
 }
 
 LRESULT CEditorToolbar::_OnCommand(WPARAM wParam, LPARAM lParam)
@@ -170,6 +236,49 @@ LRESULT CEditorToolbar::_OnNotify(NMHDR *pnmh, WPARAM wParam, bool *pfHandled)
     }
 
     return 0;
+}
+
+HRESULT CEditorToolbar::_GenerateToolIcon(const TCHAR *pszToolName, OUT HBITMAP *phbmOut)
+{
+    const int iSizeIcon = MulDiv(16, 96, _uDpi);
+
+    HDC hdcDesktop = GetDC(HWND_DESKTOP);
+    HDC hdc = CreateCompatibleDC(hdcDesktop);
+    HBITMAP hbm = CreateCompatibleBitmap(hdcDesktop, iSizeIcon, iSizeIcon);
+
+    HGDIOBJ hBmpOld = SelectObject(hdc, hbm);
+    HBRUSH hbr = (HBRUSH)GetStockObject(WHITE_BRUSH);
+    HGDIOBJ hBrushOld = SelectObject(hdc, hbr);
+
+    HPEN hpen = (HPEN)GetStockObject(BLACK_PEN);
+    HGDIOBJ hPenOld = SelectObject(hdc, hpen);
+
+    Rectangle(hdc, 0, 0, iSizeIcon, iSizeIcon);
+
+    NONCLIENTMETRICS ncm = { 0 };
+    ncm.cbSize = sizeof(ncm);
+    SystemParametersInfo(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, FALSE);
+    
+    ncm.lfMessageFont.lfHeight = MulDiv(12, 96, _uDpi);
+    HFONT hFont = CreateFontIndirect(&ncm.lfMessageFont);
+    HGDIOBJ hFontOld = SelectObject(hdc, hFont);
+
+    RECT rcText;
+    rcText.left = rcText.top = 0;
+    rcText.right = rcText.bottom = iSizeIcon;
+    InflateRect(&rcText, -1, -1);
+    DrawText(hdc, pszToolName, 1, &rcText, DT_CENTER | DT_VCENTER);
+
+    *phbmOut = hbm;
+
+    SelectObject(hdc, hPenOld);
+    SelectObject(hdc, hBrushOld);
+    SelectObject(hdc, hFontOld);
+    DeleteObject(hFont);
+    SelectObject(hdc, hBmpOld);
+    DeleteDC(hdc);
+    ReleaseDC(HWND_DESKTOP, hdcDesktop);
+    return S_OK;
 }
 
 HRESULT CEditorToolbar::_UnselectTool()
@@ -480,23 +589,27 @@ HRESULT CEditorActionsStrip::_LoadIcons()
     if (GetOSVersion()->dwMajorVersion >= 5 && !(GetOSVersion()->dwMajorVersion == 5 && GetOSVersion()->dwMinorVersion < 1))
     {
         HMODULE hmShell32 = LoadLibrary(TEXT("shell32.dll"));
+        const int iSizeIcon = MulDiv(16, 96, _uDpi);
 
-        HICON hiconDiscard = (HICON)LoadImage(hmShell32, MAKEINTRESOURCE(240), IMAGE_ICON, 16, 16, 0);
+        HICON hiconDiscard = (HICON)LoadImage(hmShell32, MAKEINTRESOURCE(240), IMAGE_ICON, iSizeIcon, iSizeIcon, 0);
         if (hiconDiscard)
         {
-            _hbmIconDiscard = _HICONToHBITMAP(hiconDiscard);
+            _hbmIconDiscard = HICONToHBITMAP(hiconDiscard);
+            DestroyIcon(hiconDiscard);
         }
 
-        HICON hiconCopy = (HICON)LoadImage(hmShell32, MAKEINTRESOURCE(243), IMAGE_ICON, 16, 16, 0);
+        HICON hiconCopy = (HICON)LoadImage(hmShell32, MAKEINTRESOURCE(243), IMAGE_ICON, iSizeIcon, iSizeIcon, 0);
         if (hiconCopy)
         {
-            _hbmIconCopy = _HICONToHBITMAP(hiconCopy);
+            _hbmIconCopy = HICONToHBITMAP(hiconCopy);
+            DestroyIcon(hiconCopy);
         }
 
-        HICON hiconSave = (HICON)LoadImage(hmShell32, MAKEINTRESOURCE(16761), IMAGE_ICON, 16, 16, 0);
+        HICON hiconSave = (HICON)LoadImage(hmShell32, MAKEINTRESOURCE(16761), IMAGE_ICON, iSizeIcon, iSizeIcon, 0);
         if (hiconSave)
         {
-            _hbmIconSave = _HICONToHBITMAP(hiconSave);
+            _hbmIconSave = HICONToHBITMAP(hiconSave);
+            DestroyIcon(hiconSave);
         }
         else
         {
@@ -509,18 +622,6 @@ HRESULT CEditorActionsStrip::_LoadIcons()
     }
 
     return S_OK;
-}
-
-HBITMAP CEditorActionsStrip::_HICONToHBITMAP(HICON hicon)
-{
-    ICONINFO ii;
-    if (GetIconInfo(hicon, &ii))
-    {
-        DeleteObject(ii.hbmMask);
-        return ii.hbmColor;
-    }
-
-    return nullptr;
 }
 
 // static
@@ -1135,11 +1236,9 @@ HRESULT CScreenshotEditorRendererGDI::InvalidateRenderObject(IScreenshotEditorOb
             }
         }
     }
-    else
-    {
-        assert(0);
-        return E_FAIL;
-    }
+
+    assert(0);
+    return E_FAIL;
 }
 
 HRESULT CScreenshotEditorRendererGDI::_PaintSelectionRectangle(HDC hdc, RECT *prc, bool fUseMarquee)
@@ -2610,6 +2709,28 @@ STDMETHODIMP CScreenshotEditorWindow::EnumObjects(OUT IEnumUnknown **ppEnumUnkno
     return E_OUTOFMEMORY;
 }
 
+STDMETHODIMP CScreenshotEditorWindow::GetSelectedRegion(RECT *prc)
+{
+    if (!prc)
+        return E_POINTER;
+    *prc = _rcSelection;
+    return S_OK;
+}
+
+STDMETHODIMP CScreenshotEditorWindow::SetSelectedRegion(RECT *prc)
+{
+    if (!prc)
+        return E_POINTER;
+    _rcSelection = *prc;
+    return S_OK;
+}
+
+STDMETHODIMP CScreenshotEditorWindow::SetSelectedObject(IScreenshotEditorObject * pObj)
+{
+    // TODO: Implement!
+    return E_NOTIMPL;
+}
+
 HRESULT CScreenshotEditorWindow::CopyToClipboardAndAccept()
 {
     if (SUCCEEDED(_ApplyCrop()))
@@ -2752,9 +2873,12 @@ STDMETHODIMP CScreenshotEditorWindow::CEnumObjects::Next(ULONG celt, IUnknown **
         _idx++;
     }
 
-    for (int i = 0; i < celt; i++)
+    if (iFetched > 0)
     {
-        rgelt[i]->AddRef();
+        for (int i = 0; i < celt; i++)
+        {
+            rgelt[i]->AddRef();
+        }
     }
 
     if (pceltFetched)

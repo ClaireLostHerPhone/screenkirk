@@ -46,12 +46,17 @@ class CEditorToolbar : public CWindow<CEditorToolbar>
 private:
     class CScreenshotEditorWindow *_pEditor;
     HWND _hwndToolbar;
+    CDynamicArray<HBITMAP> _vhbmIcons;
+    UINT _uDpi;
 
 protected:
     LRESULT v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override;
     LRESULT _OnCreate(CREATESTRUCT *pcs);
+    LRESULT _OnDestroy();
     LRESULT _OnCommand(WPARAM wParam, LPARAM lParam);
     LRESULT _OnNotify(NMHDR *pnmh, WPARAM wParam, bool *pfHandled);
+
+    HRESULT _GenerateToolIcon(const TCHAR *pszToolName, OUT HBITMAP *phbmOut);
 
     HRESULT _UnselectTool();
 
@@ -66,6 +71,7 @@ public:
     CEditorToolbar()
         : _pEditor(nullptr)
         , _hwndToolbar(nullptr)
+        , _uDpi(96)
     {
     }
 
@@ -88,6 +94,7 @@ private:
     HBITMAP _hbmIconDiscard;
     HBITMAP _hbmIconSave;
     HBITMAP _hbmIconCopy;
+    UINT _uDpi;
 
 protected:
     LRESULT v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override;
@@ -98,7 +105,6 @@ protected:
     LRESULT _OnNotify(NMHDR *pnmh, WPARAM wParam, bool *pfHandled);
 
     HRESULT _LoadIcons();
-    HBITMAP _HICONToHBITMAP(HICON hicon);
 
 public:
     enum Command
@@ -124,6 +130,7 @@ public:
         , _hbmIconDiscard(nullptr)
         , _hbmIconCopy(nullptr)
         , _hbmIconSave(nullptr)
+        , _uDpi(96)
     {
     }
 };
@@ -468,6 +475,9 @@ public:
     STDMETHODIMP GetCursorPosition(OUT POINT *pptCursor) override;
     STDMETHODIMP_(HWND) GetEditorHWND() override;
     STDMETHODIMP EnumObjects(OUT IEnumUnknown **ppEnumUnknown) override;
+    STDMETHODIMP GetSelectedRegion(RECT *prc) override;
+    STDMETHODIMP SetSelectedRegion(RECT *prc) override;
+    STDMETHODIMP SetSelectedObject(IScreenshotEditorObject *pObj) override;
     //@End IScreenshotEditor
 
 	CScreenshotEditorWindow()

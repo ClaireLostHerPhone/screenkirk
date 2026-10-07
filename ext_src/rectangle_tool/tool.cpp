@@ -67,7 +67,7 @@ STDMETHODIMP_(ULONG) CRectangleTool::GetFlags()
     return SSETF_DRAWSELECTION;
 }
 
-STDMETHODIMP_(HICON) CRectangleTool::GetToolIcon()
+STDMETHODIMP_(HICON) CRectangleTool::GetToolIcon(SIZE size)
 {
     return nullptr;
 }

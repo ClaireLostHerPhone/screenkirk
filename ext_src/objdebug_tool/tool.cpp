@@ -81,7 +81,7 @@ STDMETHODIMP_(ULONG) CObjectDebugTool::GetFlags()
     return 0;
 }
 
-STDMETHODIMP_(HICON) CObjectDebugTool::GetToolIcon()
+STDMETHODIMP_(HICON) CObjectDebugTool::GetToolIcon(SIZE size)
 {
     return nullptr;
 }

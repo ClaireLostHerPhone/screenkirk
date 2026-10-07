@@ -29,7 +29,7 @@ public:
     STDMETHODIMP OnDestroyed() override;
     STDMETHODIMP ToolSelectionChanged(BOOL fSelected) override;
     STDMETHODIMP_(ULONG) GetFlags() override;
-    STDMETHODIMP_(HICON) GetToolIcon() override;
+    STDMETHODIMP_(HICON) GetToolIcon(SIZE size) override;
     STDMETHODIMP GetToolName(OUT const TCHAR **pszOut) override;
     STDMETHODIMP OnKeyDown(int iVirtualKey, LPARAM lParam) override;
     STDMETHODIMP OnKeyUp(int iVirtualKey, LPARAM lParam) override;

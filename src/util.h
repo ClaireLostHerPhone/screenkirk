@@ -28,3 +28,4 @@ const TCHAR *PathFindFileExtension(const TCHAR *pszPath);
 HRESULT PathPopFileName(TCHAR *pszPath);
 HRESULT PathAppend(TCHAR *pszPath, const TCHAR *pszPath2);
 HRESULT CopyBitmap(HBITMAP *phbmDest, HBITMAP hbmSrc, RECT *prcCrop = nullptr);
+HBITMAP HICONToHBITMAP(HICON hicon);
