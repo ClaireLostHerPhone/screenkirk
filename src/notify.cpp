@@ -2,6 +2,7 @@
 #include "notify.h"
 #include "resource.h"
 #include "util.h"
+#include "screenshot_manager.h"
 #include <shellapi.h>
 
 LRESULT CNotifyWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -12,25 +13,48 @@ LRESULT CNotifyWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
         {
             _hmenu = CreatePopupMenu();
 
-            MENUITEMINFO miiVer = { sizeof(miiVer) };
-            miiVer.fMask = MIIM_ID | MIIM_STRING | MIIM_STATE;
-            miiVer.fState = MFS_DISABLED;
-            miiVer.wID = 100;
-            miiVer.dwTypeData = (TCHAR *)QS_APP_FULL_BRAND;
-            miiVer.cch = _tcslen(miiVer.dwTypeData);
-            InsertMenuItem(_hmenu, 0, FALSE, &miiVer);
+            int idxMenuItem = 0;
+            {
+                MENUITEMINFO miiVer = { sizeof(miiVer) };
+                miiVer.fMask = MIIM_ID | MIIM_STRING | MIIM_STATE;
+                miiVer.fState = MFS_DISABLED;
+                miiVer.wID = IDM_BRAND;
+                miiVer.dwTypeData = (TCHAR *)QS_APP_FULL_BRAND;
+                miiVer.cch = _tcslen(miiVer.dwTypeData);
+                InsertMenuItem(_hmenu, idxMenuItem++, FALSE, &miiVer);
+            }
 
-            MENUITEMINFO miiSep = { sizeof(miiSep) };
-            miiSep.fMask = MIIM_TYPE;
-            miiSep.fType = MFT_SEPARATOR;
-            InsertMenuItem(_hmenu, 1, FALSE, &miiSep);
+            {
+                MENUITEMINFO miiSep = { sizeof(miiSep) };
+                miiSep.fMask = MIIM_TYPE;
+                miiSep.fType = MFT_SEPARATOR;
+                InsertMenuItem(_hmenu, idxMenuItem++, FALSE, &miiSep);
+            }
 
-            MENUITEMINFO mii = { sizeof(mii) };
-            mii.fMask = MIIM_ID | MIIM_STRING;
-            mii.wID = 100;
-            mii.dwTypeData = (TCHAR *)TEXT("E&xit");
-            mii.cch = _tcslen(mii.dwTypeData);
-            InsertMenuItem(_hmenu, 2, FALSE, &mii);
+            {
+                MENUITEMINFO mii = { sizeof(mii) };
+                mii.fMask = MIIM_ID | MIIM_STRING;
+                mii.wID = IDM_TAKESCREENSHOT;
+                mii.dwTypeData = (TCHAR *)TEXT("Take &screenshot");
+                mii.cch = _tcslen(mii.dwTypeData);
+                InsertMenuItem(_hmenu, idxMenuItem++, FALSE, &mii);
+            }
+
+            {
+                MENUITEMINFO miiSep = { sizeof(miiSep) };
+                miiSep.fMask = MIIM_TYPE;
+                miiSep.fType = MFT_SEPARATOR;
+                InsertMenuItem(_hmenu, idxMenuItem++, FALSE, &miiSep);
+            }
+
+            {
+                MENUITEMINFO mii = { sizeof(mii) };
+                mii.fMask = MIIM_ID | MIIM_STRING;
+                mii.wID = IDM_CLOSEAPP;
+                mii.dwTypeData = (TCHAR *)TEXT("E&xit");
+                mii.cch = _tcslen(mii.dwTypeData);
+                InsertMenuItem(_hmenu, idxMenuItem++, FALSE, &mii);
+            }
 
             break;
         }
@@ -76,9 +100,18 @@ LRESULT CNotifyWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 
         case WM_COMMAND:
         {
-            if (LOWORD(wParam) == 100)
+            if (LOWORD(wParam) == IDM_CLOSEAPP)
             {
                 PostQuitMessage(0);
+            }
+            else if (LOWORD(wParam) == IDM_TAKESCREENSHOT)
+            {
+                // TODO: This should wait until the menu fades out. Otherwise, it is bound to be captured in
+                // the screenshot, which is annoying. I have looked into this a little bit, but it seems to
+                // be annoyingly difficult. It looks like commands are processed after the menu is closing
+                // and the fade is registered, and the fade itself is an internal GDI sprite rather than a
+                // window, which means there is no interface to manage it.
+                OnScreenshotKeyPressed();
             }
 
             return 0;

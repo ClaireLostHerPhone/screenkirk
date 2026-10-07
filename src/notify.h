@@ -16,6 +16,13 @@ protected:
     HRESULT _CreateNotifyIcon();
 
 public:
+    enum Command
+    {
+        IDM_CLOSEAPP = 100,
+        IDM_BRAND,
+        IDM_TAKESCREENSHOT
+    };
+
     enum WM
     {
         WM_NOTIFYICON = WM_APP + 1,
