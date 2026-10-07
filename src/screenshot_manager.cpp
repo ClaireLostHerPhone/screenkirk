@@ -434,34 +434,38 @@ HRESULT CSaveImage::OpenSaveDialog()
             _stprintf_s(szBuffer, TEXT("Failed to open save dialog. (%d)"), dwError);
             MessageBox(ofn.hwndOwner, szBuffer, TEXT("Error"), MB_OK | MB_ICONERROR);
         }
-    }
 
-    delete[] pszFilter;
-
-    FilterItem *pSelectedFilterItem = &vFilterItems.At(ofn.nFilterIndex - 1);
-
-    const TCHAR *pszExtension = PathFindFileExtension(szFileName);
-    char *pcData = nullptr;
-    int cbData = 0;
-    if (FAILED(_EncodeImage(&pcData, &cbData, pszExtension, pSelectedFilterItem)))
-    {
-        return E_FAIL;
-    }
-
-    HANDLE hf = CreateFile(szFileName, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (hf != INVALID_HANDLE_VALUE)
-    {
-        DWORD dwBytesWritten = 0;
-        WriteFile(hf, pcData, cbData, &dwBytesWritten, nullptr);
-        hr = S_OK;
+        hr = E_ABORT;
     }
     else
     {
-        hr = HRESULT_FROM_WIN32(GetLastError());
+        FilterItem *pSelectedFilterItem = &vFilterItems.At(ofn.nFilterIndex - 1);
+
+        const TCHAR *pszExtension = PathFindFileExtension(szFileName);
+        char *pcData = nullptr;
+        int cbData = 0;
+        if (FAILED(_EncodeImage(&pcData, &cbData, pszExtension, pSelectedFilterItem)))
+        {
+            return E_FAIL;
+        }
+
+        HANDLE hf = CreateFile(szFileName, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (hf != INVALID_HANDLE_VALUE)
+        {
+            DWORD dwBytesWritten = 0;
+            WriteFile(hf, pcData, cbData, &dwBytesWritten, nullptr);
+            hr = S_OK;
+        }
+        else
+        {
+            hr = HRESULT_FROM_WIN32(GetLastError());
+        }
+
+        delete[] pcData;
+        CloseHandle(hf);
     }
 
-    delete[] pcData;
-    CloseHandle(hf);
+    delete[] pszFilter;
     return hr;
 }
 
@@ -810,124 +814,113 @@ HRESULT CSaveImage::_EncodeBitmap(char **ppcData, int *pcbData)
     return hr;
 }
 
-// Yes, the function is a horrible pyramid.
 HRESULT CSaveImage::_EncodeWIC(GUID *pEncoderGuid, char **ppcData, int *pcbData)
 {
 #ifdef COMPILETIME_ENABLE_WIC
-    IWICBitmap *pBitmap = nullptr;
-    HRESULT hr = _pWicFactory->CreateBitmapFromHBITMAP(_hbm, nullptr, WICBitmapIgnoreAlpha, &pBitmap);
+    CComPtr<IWICBitmap> spBitmap;
+    HRESULT hr = _pWicFactory->CreateBitmapFromHBITMAP(_hbm, nullptr, WICBitmapIgnoreAlpha, &spBitmap);
+    
+    if (FAILED(hr))
+        return hr;
+
+    CComPtr<IStream> spMemStream;
+    hr = CreateStreamOnHGlobal(nullptr, TRUE, &spMemStream);
+    if (FAILED(hr))
+        return hr;
+
+    CComPtr<IWICStream> spStream;
+    hr = _pWicFactory->CreateStream(&spStream);
+    if (FAILED(hr))
+        return hr;
+
+    hr = spStream->InitializeFromIStream(spMemStream.Get());
+    if (FAILED(hr))
+        return hr;
+
+    CComPtr<IWICBitmapEncoder> spEncoder;
+    hr = _pWicFactory->CreateEncoder(*pEncoderGuid, nullptr, &spEncoder);
+    if (FAILED(hr))
+        return hr;
+
+    hr = spEncoder->Initialize(spStream.Get(), WICBitmapEncoderNoCache);
+    if (FAILED(hr))
+        return hr;
+
+    CComPtr<IWICBitmapFrameEncode> spFrameEncode;
+    CComPtr<IPropertyBag2> spPropertyBag;
+    hr = spEncoder->CreateNewFrame(&spFrameEncode, &spPropertyBag);
+    if (FAILED(hr))
+        return hr;
+
+    hr = spFrameEncode->Initialize(spPropertyBag.Get());
+    if (FAILED(hr))
+        return hr;
+
+    UINT uiWidth = 0;
+    UINT uiHeight = 0;
+    hr = spBitmap->GetSize(&uiWidth, &uiHeight);
+    if (FAILED(hr))
+        return hr;
+
+    hr = spFrameEncode->SetSize(uiWidth, uiHeight);
+    if (FAILED(hr))
+        return hr;
+
+    WICPixelFormatGUID formatGuid;
+    hr = spBitmap->GetPixelFormat(&formatGuid);
+    if (FAILED(hr))
+        return hr;
+
+    hr = spFrameEncode->SetPixelFormat(&formatGuid);
+    if (FAILED(hr))
+        return hr;
+
+    hr = spFrameEncode->WriteSource(spBitmap.Get(), nullptr);
+    if (FAILED(hr))
+        return hr;
+
+    hr = spFrameEncode->Commit();
+    if (FAILED(hr))
+        return hr;
+
+    hr = spEncoder->Commit();
     if (SUCCEEDED(hr))
     {
-        IStream *pMemStream = nullptr;
-        hr = CreateStreamOnHGlobal(nullptr, TRUE, &pMemStream);
+        HGLOBAL hGlobal = nullptr;
+        hr = GetHGlobalFromStream(spMemStream.Get(), &hGlobal);
         if (SUCCEEDED(hr))
         {
-            IWICStream *pStream = nullptr;
-            hr = _pWicFactory->CreateStream(&pStream);
-            if (SUCCEEDED(hr))
+            size_t cbStream = GlobalSize(hGlobal);
+            if (cbStream > 0)
             {
-                hr = pStream->InitializeFromIStream(pMemStream);
+                ULARGE_INTEGER streamPos = { 0 };
+                LARGE_INTEGER zeroSeek = { 0 };
+                hr = spMemStream->Seek(zeroSeek, STREAM_SEEK_CUR, &streamPos);
                 if (SUCCEEDED(hr))
                 {
-                    IWICBitmapEncoder *pEncoder = nullptr;
-                    hr = _pWicFactory->CreateEncoder(*pEncoderGuid, nullptr, &pEncoder);
-                    if (SUCCEEDED(hr))
+                    DWORD cbFinal = (DWORD)streamPos.QuadPart;
+
+                    void *pBytes = GlobalLock(hGlobal);
+                    if (pBytes)
                     {
-                        hr = pEncoder->Initialize(pStream, WICBitmapEncoderNoCache);
-                        if (SUCCEEDED(hr))
+                        char *pcBytes = new (std::nothrow) char[cbFinal];
+                        if (pcBytes)
                         {
-                            IWICBitmapFrameEncode *pFrameEncode = nullptr;
-                            IPropertyBag2 *pPropertyBag = nullptr;
-                            hr = pEncoder->CreateNewFrame(&pFrameEncode, &pPropertyBag);
-                            if (SUCCEEDED(hr))
-                            {
-                                hr = pFrameEncode->Initialize(pPropertyBag);
-                                if (SUCCEEDED(hr))
-                                {
-                                    UINT uiWidth = 0;
-                                    UINT uiHeight = 0;
-                                    hr = pBitmap->GetSize(&uiWidth, &uiHeight);
-                                    if (SUCCEEDED(hr))
-                                    {
-                                        hr = pFrameEncode->SetSize(uiWidth, uiHeight);
-                                        if (SUCCEEDED(hr))
-                                        {
-                                            WICPixelFormatGUID formatGuid;
-                                            hr = pBitmap->GetPixelFormat(&formatGuid);
-                                            if (SUCCEEDED(hr))
-                                            {
-                                                hr = pFrameEncode->SetPixelFormat(&formatGuid);
-                                                if (SUCCEEDED(hr))
-                                                {
-                                                    hr = pFrameEncode->WriteSource(pBitmap, nullptr);
-                                                    if (SUCCEEDED(hr))
-                                                    {
-                                                        hr = pFrameEncode->Commit();
-                                                        if (SUCCEEDED(hr))
-                                                        {
-                                                            hr = pEncoder->Commit();
-                                                            if (SUCCEEDED(hr))
-                                                            {
-                                                                HGLOBAL hGlobal = nullptr;
-                                                                hr = GetHGlobalFromStream(pMemStream, &hGlobal);
-                                                                if (SUCCEEDED(hr))
-                                                                {
-                                                                    size_t cbStream = GlobalSize(hGlobal);
-                                                                    if (cbStream > 0)
-                                                                    {
-                                                                        ULARGE_INTEGER streamPos = { 0 };
-                                                                        LARGE_INTEGER zeroSeek = { 0 };
-                                                                        hr = pMemStream->Seek(zeroSeek, STREAM_SEEK_CUR, &streamPos);
-                                                                        if (SUCCEEDED(hr))
-                                                                        {
-                                                                            DWORD cbFinal = (DWORD)streamPos.QuadPart;
+                            memcpy_s(pcBytes, cbFinal, pBytes, cbFinal);
 
-                                                                            void *pBytes = GlobalLock(hGlobal);
-                                                                            if (pBytes)
-                                                                            {
-                                                                                char *pcBytes = new (std::nothrow) char[cbFinal];
-                                                                                if (pcBytes)
-                                                                                {
-                                                                                    memcpy_s(pcBytes, cbFinal, pBytes, cbFinal);
-
-                                                                                    *ppcData = pcBytes;
-                                                                                    *pcbData = cbFinal;
-                                                                                }
-                                                                                else
-                                                                                {
-                                                                                    hr = E_OUTOFMEMORY;
-                                                                                }
-                                                                            }
-
-                                                                            GlobalUnlock(hGlobal);
-                                                                        }
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            pPropertyBag->Release();
-                            pFrameEncode->Release();
+                            *ppcData = pcBytes;
+                            *pcbData = cbFinal;
                         }
-
-                        pEncoder->Release();
+                        else
+                        {
+                            hr = E_OUTOFMEMORY;
+                        }
                     }
+
+                    GlobalUnlock(hGlobal);
                 }
-
-                pStream->Release();
             }
-
-            pMemStream->Release();
         }
-
-        pBitmap->Release();
     }
 
     return hr;

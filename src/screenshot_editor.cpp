@@ -2354,13 +2354,8 @@ HRESULT CScreenshotEditorWindow::_Redo()
 
 HRESULT CScreenshotEditorWindow::_ChangeTool(ScreenshotEditorTool newTool)
 {
-    if (newTool != _tool && _IsExtensionTool())
-    {
-        // This still runs if _ChangeTool fails, which can happen if another extension
-        // tool rejects the change.
-        // TODO: Refactor to avoid this case.
-        _pExtTool->ToolSelectionChanged(FALSE);
-    }
+    ScreenshotEditorTool oldTool = _tool;
+    IScreenshotEditorTool *pOldExtTool = _pExtTool;
 
     if (newTool == SSET_SELECT)
     {
@@ -2398,13 +2393,17 @@ HRESULT CScreenshotEditorWindow::_ChangeTool(ScreenshotEditorTool newTool)
         _tool = newTool;
         _pExtTool = pExtTool;
 
-        // TODO: Extension tools will be able to report this as they need to.
         _pRenderer->SetMarqueeSelection(false);
     }
     else
     {
         _tool = SSET_ILLEGAL;
         _pRenderer->SetMarqueeSelection(false);
+    }
+
+    if (newTool != oldTool && oldTool >= SSET_EXTENSIONFIRST && pOldExtTool)
+    {
+        pOldExtTool->ToolSelectionChanged(FALSE);
     }
 
     _UpdateCursor();
@@ -2725,7 +2724,7 @@ STDMETHODIMP CScreenshotEditorWindow::SetSelectedRegion(RECT *prc)
     return S_OK;
 }
 
-STDMETHODIMP CScreenshotEditorWindow::SetSelectedObject(IScreenshotEditorObject * pObj)
+STDMETHODIMP CScreenshotEditorWindow::SetSelectedObject(IScreenshotEditorObject *pObj)
 {
     // TODO: Implement!
     return E_NOTIMPL;
@@ -2758,9 +2757,14 @@ HRESULT CScreenshotEditorWindow::SaveImageToFileAndAccept()
 {
     if (SUCCEEDED(_ApplyCrop()))
     {
-        if (SUCCEEDED(_pScreenshotCtx->SaveToFile()))
+        HRESULT hr = _pScreenshotCtx->SaveToFile();
+        if (SUCCEEDED(hr))
         {
             DestroyWindow(_hwnd);
+        }
+        else if (hr == E_ABORT)
+        {
+            return E_ABORT;
         }
         else
         {
