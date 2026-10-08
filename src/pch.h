@@ -7,6 +7,8 @@
 #include <tchar.h>
 #include "screenkirk.h"
 #include "portable.h"
+#include "portablep.h"
+#include "ccomptr.h"
 
 #define QS_APP_NAME         TEXT("codename screenkirk")
 #define QS_VER_STRING       TEXT("ver. alpha 1.0")

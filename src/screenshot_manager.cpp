@@ -287,6 +287,8 @@ HRESULT TakeScreenshot(OUT CScreenshotContext **ppContextOut)
             {
                 pContext->_hbmCursorColor = ii.hbmColor;
                 pContext->_hbmCursorMask = ii.hbmMask;
+                pContext->_ptCursor.x -= ii.xHotspot;
+                pContext->_ptCursor.y -= ii.yHotspot;
             }
         }
     }

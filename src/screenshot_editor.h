@@ -8,6 +8,7 @@ enum ScreenshotEditorTool
 {
     SSET_SELECT,
     SSET_DRAG,
+    SSET_SHOWCURSOR,
     SSET_ILLEGAL, // Used as a fallback if an extension tool fails.
 
     SSET_EXTENSIONFIRST, // Used for extensions. Not really currently implemented.
@@ -201,10 +202,13 @@ class CScreenshotEditorRendererGDI
     HPEN _hpenSizingHelpers;
     HBITMAP _hbmScreenshotLight;
     HBITMAP _hbmScreenshotDimmed;
+    HBITMAP _hbmCursorLight;
+    HBITMAP _hbmCursorDimmed;
     HBITMAP *_hbmMipmaps;
     CRenderObject *_pRenderObjSel;
     RECT _rcSelection;
     RECT _rcSelectionVisual;
+    RECT _rcCursor;
     CDynamicArray<CRenderObject> _vRenderObjs;
     int _cMipmaps;
     int _iSelMarqueeFrame;
@@ -224,6 +228,7 @@ class CScreenshotEditorRendererGDI
         bool fSelectionDirtySouth : 1;
         bool fSelectionDirtyWest : 1;
         bool fEntireFrameDirty : 1;
+        bool fCursorVisible : 1;
     } _bmp;
 
     HRESULT _PaintSelectionRectangle(HDC hdc, RECT *prc, bool fUseMarquee);

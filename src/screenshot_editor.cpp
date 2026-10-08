@@ -6,6 +6,7 @@
 #include <CommCtrl.h>
 #include "util.h"
 #include <assert.h>
+#include "cursor.h"
 
 //
 // CEditorToolbar
@@ -96,20 +97,22 @@ LRESULT CEditorToolbar::_OnCreate(CREATESTRUCT *pcs)
 
     int cExtTools = _pEditor->GetExtensionToolCount();
     int cSuccessfulTools = 0;
-    TBBUTTON *rgtbButtons = new TBBUTTON[2 + cExtTools];
+    TBBUTTON *rgtbButtons = new TBBUTTON[3 + cExtTools];
     DBGPRINT(TEXT("Extension tool count: %d"), cExtTools);
-    ZeroMemory(rgtbButtons, sizeof(TBBUTTON) * (2 + cExtTools));
+    ZeroMemory(rgtbButtons, sizeof(TBBUTTON) * (3 + cExtTools));
     {
         int &i = cSuccessfulTools;
 
         int iSizeIcon = MulDiv(16, 96, _uDpi);
         HICON hiconSelect = (HICON)LoadImage(g_hinst, MAKEINTRESOURCE(IDI_TOOLSELECT), IMAGE_ICON, iSizeIcon, iSizeIcon, LR_DEFAULTCOLOR);
         HICON hiconMove = (HICON)LoadImage(g_hinst, MAKEINTRESOURCE(IDI_TOOLMOVE), IMAGE_ICON, iSizeIcon, iSizeIcon, LR_DEFAULTCOLOR);
+        HICON hiconCursorShow = (HICON)LoadImage(g_hinst, MAKEINTRESOURCE(IDI_TOOLCURSORSHOW), IMAGE_ICON, iSizeIcon, iSizeIcon, LR_DEFAULTCOLOR);
 
         int idxIcon = 0;
 
         int idxIconSelect = 0;
         int idxIconMove = 0;
+        int idxIconCursorShow = 0;
 
         {
             HBITMAP hbm = HICONToHBITMAP(hiconSelect);
@@ -135,6 +138,18 @@ LRESULT CEditorToolbar::_OnCreate(CREATESTRUCT *pcs)
             idxIconMove = idxIcon++;
         }
 
+        {
+            HBITMAP hbm = HICONToHBITMAP(hiconCursorShow);
+            _vhbmIcons.Push(hbm);
+            DestroyIcon(hiconCursorShow);
+
+            TBADDBITMAP ab;
+            ab.hInst = nullptr;
+            ab.nID = (UINT_PTR)hbm;
+            SendMessage(_hwndToolbar, TB_ADDBITMAP, 1, (LPARAM)&ab);
+            idxIconCursorShow = idxIcon++;
+        }
+
         rgtbButtons[i].idCommand = SSET_SELECT;
         rgtbButtons[i].dwData = (INT_PTR)TEXT("Select");
         rgtbButtons[i].fsState = TBSTATE_ENABLED;
@@ -147,6 +162,13 @@ LRESULT CEditorToolbar::_OnCreate(CREATESTRUCT *pcs)
         rgtbButtons[i].fsState = TBSTATE_ENABLED;
         rgtbButtons[i].fsStyle = BTNS_CHECK;
         rgtbButtons[i].iBitmap = idxIconMove;
+
+        i++;
+        rgtbButtons[i].idCommand = SSET_SHOWCURSOR;
+        rgtbButtons[i].dwData = (INT_PTR)TEXT("Show cursor");
+        rgtbButtons[i].fsState = TBSTATE_ENABLED;
+        rgtbButtons[i].fsStyle = BTNS_CHECK;
+        rgtbButtons[i].iBitmap = idxIconCursorShow;
 
         for (int j = 0; j < _pEditor->GetExtensionToolCount(); j++)
         {
@@ -216,7 +238,17 @@ LRESULT CEditorToolbar::_OnDestroy()
 
 LRESULT CEditorToolbar::_OnCommand(WPARAM wParam, LPARAM lParam)
 {
-    SendMessage(_pEditor->GetHWND(), CScreenshotEditorWindow::WM_SSE_CHANGETOOL, LOWORD(wParam), 0);
+    WPARAM toolRequested = LOWORD(wParam);
+
+    if (toolRequested == SSET_SHOWCURSOR)
+    {
+        // This tool does not receive selection.
+    }
+    else
+    {
+        SendMessage(_pEditor->GetHWND(), CScreenshotEditorWindow::WM_SSE_CHANGETOOL, toolRequested, 0);
+    }
+
     return 0;
 }
 
@@ -288,7 +320,7 @@ HRESULT CEditorToolbar::_UnselectTool()
         TBBUTTON tbb = { 0 };
         SendMessage(_hwndToolbar, TB_GETBUTTON, i, (LPARAM)&tbb);
 
-        if (tbb.fsState & TBSTATE_CHECKED)
+        if (tbb.fsState & TBSTATE_CHECKED && tbb.idCommand != SSET_SHOWCURSOR)
         {
             SendMessage(_hwndToolbar, TB_CHECKBUTTON, tbb.idCommand, FALSE);
         }
@@ -908,6 +940,19 @@ HRESULT CScreenshotEditorRendererGDI::Initialize()
     HRESULT hr = _MakeDimmedScreenshot();
     _hpenSelect = CreatePen(PS_DOT, 1, RGB(128, 128, 128));
     _hpenSizingHelpers = CreatePen(PS_SOLID, 1, RGB(128, 128, 128));
+
+    POINT ptCursor = _pScreenshotCtx->_ptCursor;
+    ScreenToClient(_hwndRenderTarget, &ptCursor);
+    CCursorRenderer cursorRenderer(
+        _pScreenshotCtx->_hbmScreenshot,
+        _pScreenshotCtx->_hbmCursorColor,
+        _pScreenshotCtx->_hbmCursorMask,
+        ptCursor
+    );
+    cursorRenderer.RenderCursor(&_hbmCursorLight, &_rcCursor);
+    _bmp.fCursorVisible = true;
+    // I'll do the dimming later.
+
     return SUCCEEDED(hr) ? S_OK : hr;
 }
 
@@ -967,6 +1012,26 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
         {
             _PaintSelectionRectangle(hdcSelection, &_rcSelection, false);
         }
+
+        SelectObject(hdcScreenshot, hOldBmp);
+        SelectObject(hdcScreenshot, _hbmScreenshotDimmed);
+    }
+
+    if (_bmp.fCursorVisible)
+    {
+        HDC hdcSelection = fUseBackbuffer
+            ? hdcBackbuffer
+            : hdc;
+
+        HGDIOBJ hOldBmp = SelectObject(hdcScreenshot, _hbmCursorLight);
+        BitBlt(
+            hdcSelection,
+            _rcCursor.left, _rcCursor.top,
+            RECTWIDTH(_rcCursor), RECTHEIGHT(_rcCursor),
+            hdcScreenshot,
+            0, 0,
+            SRCCOPY
+        );
 
         SelectObject(hdcScreenshot, hOldBmp);
         SelectObject(hdcScreenshot, _hbmScreenshotDimmed);

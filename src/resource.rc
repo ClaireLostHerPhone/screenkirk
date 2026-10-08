@@ -5,6 +5,7 @@ IDI_APP ICON "resource/app.ico"
 
 IDI_TOOLSELECT ICON "resource/tool_select.ico"
 IDI_TOOLMOVE ICON "resource/tool_move.ico"
+IDI_TOOLCURSORSHOW ICON "resource/tool_cursor_show.ico"
 
 #define VER_FILEVERSION             1,00,0,0
 #define VER_FILEVERSION_STR         "1.0"

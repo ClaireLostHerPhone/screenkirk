@@ -49,6 +49,8 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PTSTR pCmdL
     );
 #endif
 
+    ASSERT_KEEP(SUCCEEDED(PortableInitialize()));
+
     ASSERT_KEEP(SUCCEEDED(CConfigManager::CreateInstance()));
 
     ASSERT_KEEP(SUCCEEDED(CExtensionManager::CreateInstance()));
