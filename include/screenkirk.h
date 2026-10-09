@@ -131,9 +131,8 @@ DEFINE_GUID(IID_IScreenshotEditorObjectRendererGDI,
 
 //@Begin IScreenshotEditorObject::GetFlags() flags
 #define SSEOF_NODRAG (1 << 0)
-#define SSEOF_NOBACKBUFFER (1 << 1)
-#define SSEOF_MAYFLATTEN (1 << 2)
-#define SSEOF_FIXEDZORDER (1 << 3)
+#define SSEOF_MAYFLATTEN (1 << 1)
+#define SSEOF_FIXEDZORDER (1 << 2)
 //@End IScreenshotEditorObject::GetFlags() flags
 
 /**

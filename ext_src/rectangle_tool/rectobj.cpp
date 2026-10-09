@@ -25,13 +25,14 @@ STDMETHODIMP CRectangleObject::GetSite(REFIID riid, void **ppvSite)
 {
     if (!ppvSite)
         return E_POINTER;
+    if (!_pEditor)
+        return E_NOINTERFACE;
 
-    return _pUnkSite->QueryInterface(riid, ppvSite);
+    return _pEditor->QueryInterface(riid, ppvSite);
 }
 
 STDMETHODIMP CRectangleObject::SetSite(IUnknown *pUnkSite)
 {
-    _pUnkSite = pUnkSite;
     HRESULT hr = E_FAIL;
 
     if (_pEditor)
@@ -59,14 +60,7 @@ STDMETHODIMP_(const TCHAR *) CRectangleObject::GetClassName()
 
 STDMETHODIMP_(ULONG __stdcall) CRectangleObject::GetFlags()
 {
-    ULONG uFlags = 0;
-
-    // For transparency, we need to disable the backbuffer in order to access the pixels
-    // behind the object. Otherwise, we would get our own buffer with no pixel data.
-    if (_type == TYPE_HIGHLIGHTER)
-        uFlags |= SSEOF_NOBACKBUFFER;
-
-    return uFlags;
+    return 0;
 }
 
 STDMETHODIMP CRectangleObject::InsertedIntoDocument()
@@ -131,7 +125,6 @@ STDMETHODIMP CRectangleObject::Paint()
 STDMETHODIMP CRectangleObject::SetGdiParameters(HDC hdc, RECT *prcPaint)
 {
     _hdc = hdc;
-    _rcPaint = *prcPaint;
     return S_OK;
 }
 

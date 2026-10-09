@@ -13,12 +13,10 @@ public:
     };
 
 private:
-    IUnknown *_pUnkSite;
     IScreenshotEditor *_pEditor;
     HDC _hdc;
     RECT _rcPosLogical;
     RECT _rcPosVisual;
-    RECT _rcPaint;
     RectangleType _type;
     bool _fDirty;
 

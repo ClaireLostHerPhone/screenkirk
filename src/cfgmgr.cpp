@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "cfgmgr.h"
 
-#define REGSTR_SCREENKIRK TEXT("SOFTWARE\\ClaireLostHerPhone\\screenkirk")
+#define REGSTR_SCREENKIRK TEXT("SOFTWARE\\ClaireLostHerPhone\\QuiKShot")
 
 CConfigManager *g_pCfgMgrInst = nullptr;
 
