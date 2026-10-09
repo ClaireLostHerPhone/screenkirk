@@ -236,7 +236,7 @@ class CScreenshotEditorRendererGDI
     HRESULT _PaintSelectionRectangle(HDC hdc, RECT *prc, bool fUseMarquee);
     HRESULT _PaintSizingHelpers(HDC hdc, RECT *prc);
     HRESULT _PaintRenderObjectVisualBuffer(
-        HDC hdcRenderTarget, RECT *prcPaint, CRenderObject *pRenderObject, bool fUseBackbuffer);
+        HDC hdcRenderTarget, RECT *prcPaint, CRenderObject *pRenderObject);
     void _UpdateMarquee();
     HRESULT _StartSelectionMarqueeTimer();
     HRESULT _EndSelectionMarqueeTimer();

@@ -1050,11 +1050,8 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
             ? hdcBackbuffer
             : hdc;
 
-        bool fIsAlphaSupported = PortableIsAlphaBlendAvailable()
-            && GetDeviceCaps(hdcSelection, BITSPIXEL) == 32;
-
         // Paint all objects from back to front.
-        for (int i = 0; i < _vRenderObjs.GetSize(); i++)
+        for (int i = 0, j = _vRenderObjs.GetSize(); i < j; i++)
         {
             CRenderObject *pRenderObject = &_vRenderObjs[i];
 
@@ -1072,54 +1069,7 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
                     continue;
                 }
 
-                bool fObjNoBackbuffer = !fIsAlphaSupported
-                    || pRenderObject->_pObj->GetFlags() & SSEOF_NOBACKBUFFER;
-
-                // If the object is dirty, then we will repaint its buffer. Otherwise if possible and
-                // enabled by the object, the object's paint routine is skipped, and the existing image
-                // in our backbuffer is copied back over the editor framebuffer.
-                if (true||fObjNoBackbuffer || pRenderObject->_pObj->IsVisualDirty())
-                {
-                    ASSERT_KEEP(SUCCEEDED(_PaintRenderObjectVisualBuffer(hdcSelection, prcPaint, pRenderObject, !fObjNoBackbuffer)));
-                }
-                else
-                {
-                    // AlphaBlend the object's visual layer into the current framebuffer...
-                    // (if we support it, that is...) <--- This doesn't really work out because GDI operations don't
-                    // give us an alpha channel. Thus, we can't really AlphaBlend the contents. I will check in the
-                    // code I've written for consideration of this approach, however I will remove the code in a
-                    // subsequent commit.
-                    BLENDFUNCTION bf = { 0 };
-                    bf.AlphaFormat = AC_SRC_ALPHA;
-                    bf.SourceConstantAlpha = 255;
-                    bf.BlendFlags = 0;
-                    bf.BlendOp = AC_SRC_OVER;
-
-                    HDC hdcLayer = CreateCompatibleDC(hdc);
-                    HGDIOBJ hBmpOldLayer = SelectObject(hdcLayer, pRenderObject->_hbmLayer);
-
-                    /*BitBlt(
-                        hdcSelection,
-                        pRenderObject->_rcLatestVisual.left, pRenderObject->_rcLatestVisual.top,
-                        RECTWIDTH(pRenderObject->_rcLatestVisual), RECTHEIGHT(pRenderObject->_rcLatestVisual),
-                        hdcLayer,
-                        0, 0,
-                        SRCCOPY
-                    );*/
-
-                    PortableAlphaBlend(
-                        hdcSelection,
-                        pRenderObject->_rcLatestVisual.left, pRenderObject->_rcLatestVisual.top,
-                        RECTWIDTH(pRenderObject->_rcLatestVisual), RECTHEIGHT(pRenderObject->_rcLatestVisual),
-                        hdcLayer,
-                        0, 0,
-                        RECTWIDTH(pRenderObject->_rcLatestVisual), RECTHEIGHT(pRenderObject->_rcLatestVisual),
-                        bf
-                    );
-
-                    SelectObject(hdcLayer, hBmpOldLayer);
-                    DeleteDC(hdcLayer);
-                }
+                ASSERT_KEEP(SUCCEEDED(_PaintRenderObjectVisualBuffer(hdcSelection, prcPaint, pRenderObject)));
             }
         }
     }
@@ -1476,57 +1426,33 @@ HRESULT CScreenshotEditorRendererGDI::_PaintSizingHelpers(HDC hdc, RECT *prc)
 }
 
 HRESULT CScreenshotEditorRendererGDI::_PaintRenderObjectVisualBuffer(
-    HDC hdcRenderTarget, RECT *prcPaint, CRenderObject *pRenderObject, bool fUseBackbuffer)
+    HDC hdcRenderTarget, RECT *prcPaint, CRenderObject *pRenderObject)
 {
     if (pRenderObject->HasGdiRenderer())
     {
-        HDC hdcLayer = fUseBackbuffer
-            ? CreateCompatibleDC(hdcRenderTarget)
-            : hdcRenderTarget;
-        if (hdcLayer)
+        HDC hdcLayer = hdcRenderTarget;
+        
+        RECT rcLogical;
+        RECT rcVisual;
+        if (SUCCEEDED(pRenderObject->_pObj->GetLogicalRect(&rcLogical))
+            && SUCCEEDED(pRenderObject->_pObj->GetVisualRect(&rcVisual)))
         {
-            RECT rcLogical;
-            RECT rcVisual;
-            if (SUCCEEDED(pRenderObject->_pObj->GetLogicalRect(&rcLogical))
-                && SUCCEEDED(pRenderObject->_pObj->GetVisualRect(&rcVisual)))
-            {
-                OffsetRect(&rcVisual, rcLogical.left, rcLogical.top);
-                pRenderObject->_rcLatestVisual = rcVisual;
+            OffsetRect(&rcVisual, rcLogical.left, rcLogical.top);
+            pRenderObject->_rcLatestVisual = rcVisual;
 
-                if (fUseBackbuffer)
-                {
-                    if (pRenderObject->_hbmLayer)
-                        DeleteObject(pRenderObject->_hbmLayer);
+            HGDIOBJ hObjOld = SelectObject(hdcLayer, pRenderObject->_hbmLayer);
 
-                    HDC hdcDesktop = GetDC(HWND_DESKTOP);
-                    pRenderObject->_hbmLayer = CreateCompatibleBitmap(hdcDesktop, RECTWIDTH(rcVisual), RECTHEIGHT(rcVisual));
-                    ReleaseDC(HWND_DESKTOP, hdcDesktop);
-                }
+            POINT ptViewportOld;
+            // We need to translate the viewport by the paint rect or the positioning will be 
+            // off when painting small regions.
+            SetViewportOrgEx(hdcLayer, -prcPaint->left + rcVisual.left, -prcPaint->top + rcVisual.top, &ptViewportOld);
 
-                if (!fUseBackbuffer || pRenderObject->_hbmLayer)
-                {
-                    HGDIOBJ hObjOld = SelectObject(hdcLayer, pRenderObject->_hbmLayer);
+            ASSERT_KEEP(SUCCEEDED(pRenderObject->_pRendererGdi->SetGdiParameters(hdcLayer, prcPaint)));
+            ASSERT_KEEP(SUCCEEDED(pRenderObject->_pRendererGdi->Paint()));
 
-                    POINT ptViewportOld;
-                    // If we aren't using a backbuffer, then we need to translate the viewport by the paint rect or
-                    // the positioning will be off when painting small regions.
-                    if (!fUseBackbuffer)
-                        SetViewportOrgEx(hdcLayer, -prcPaint->left + rcVisual.left, -prcPaint->top + rcVisual.top, &ptViewportOld);
-                    else
-                        SetViewportOrgEx(hdcLayer, 0, 0, &ptViewportOld);
+            SelectObject(hdcLayer, hObjOld);
 
-                    ASSERT_KEEP(SUCCEEDED(pRenderObject->_pRendererGdi->SetGdiParameters(hdcLayer, prcPaint)));
-                    ASSERT_KEEP(SUCCEEDED(pRenderObject->_pRendererGdi->Paint()));
-
-                    SelectObject(hdcLayer, hObjOld);
-
-                    if (!fUseBackbuffer)
-                        SetViewportOrgEx(hdcLayer, ptViewportOld.x, ptViewportOld.y, nullptr);
-                }
-            }
-
-            if (fUseBackbuffer)
-                DeleteDC(hdcLayer);
+            SetViewportOrgEx(hdcLayer, ptViewportOld.x, ptViewportOld.y, nullptr);
         }
 
         return S_OK;
