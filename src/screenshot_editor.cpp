@@ -7,6 +7,7 @@
 #include "util.h"
 #include <assert.h>
 #include "cursor.h"
+#include "cfgmgr.h"
 
 //
 // CEditorToolbar
@@ -167,6 +168,8 @@ LRESULT CEditorToolbar::_OnCreate(CREATESTRUCT *pcs)
         rgtbButtons[i].idCommand = SSET_SHOWCURSOR;
         rgtbButtons[i].dwData = (INT_PTR)TEXT("Show cursor");
         rgtbButtons[i].fsState = TBSTATE_ENABLED;
+        if (_pEditor->IsCursorShown())
+            rgtbButtons[i].fsState |= TBSTATE_CHECKED;
         rgtbButtons[i].fsStyle = BTNS_CHECK;
         rgtbButtons[i].iBitmap = idxIconCursorShow;
 
@@ -243,6 +246,14 @@ LRESULT CEditorToolbar::_OnCommand(WPARAM wParam, LPARAM lParam)
     if (toolRequested == SSET_SHOWCURSOR)
     {
         // This tool does not receive selection.
+        if (!SendMessage(_hwndToolbar, TB_ISBUTTONCHECKED, SSET_SHOWCURSOR, 0))
+        {
+            SendMessage(_pEditor->GetHWND(), CScreenshotEditorWindow::WM_SSE_HIDECURSOR, 0, 0);
+        }
+        else
+        {
+            SendMessage(_pEditor->GetHWND(), CScreenshotEditorWindow::WM_SSE_SHOWCURSOR, 0, 0);
+        }
     }
     else
     {
@@ -937,21 +948,37 @@ CScreenshotEditorRendererGDI::~CScreenshotEditorRendererGDI()
 
 HRESULT CScreenshotEditorRendererGDI::Initialize()
 {
-    HRESULT hr = _MakeDimmedScreenshot();
-    _hpenSelect = CreatePen(PS_DOT, 1, RGB(128, 128, 128));
-    _hpenSizingHelpers = CreatePen(PS_SOLID, 1, RGB(128, 128, 128));
-
     POINT ptCursor = _pScreenshotCtx->_ptCursor;
     ScreenToClient(_hwndRenderTarget, &ptCursor);
     CCursorRenderer cursorRenderer(
         _pScreenshotCtx->_hbmScreenshot,
+        _pScreenshotCtx->_hcursor,
         _pScreenshotCtx->_hbmCursorColor,
         _pScreenshotCtx->_hbmCursorMask,
         ptCursor
     );
-    cursorRenderer.RenderCursor(&_hbmCursorLight, &_rcCursor);
-    _bmp.fCursorVisible = true;
-    // I'll do the dimming later.
+    cursorRenderer.RenderCursor(&_hbmCursor, &_rcCursor);
+
+    HRESULT hr = _MakeDimmedScreenshot();
+    _hpenSelect = CreatePen(PS_DOT, 1, RGB(128, 128, 128));
+    _hpenSizingHelpers = CreatePen(PS_SOLID, 1, RGB(128, 128, 128));
+
+    ASSERT_KEEP(SUCCEEDED(_MakeHideCursorBuffers()));
+
+    bool fShowCursor = true;
+    if (FAILED(CConfigManager::GetInstance()->GetBool(TEXT("HideCursorByDefault"), &fShowCursor)))
+    {
+        fShowCursor = true;
+    }
+    else
+    {
+        fShowCursor = !fShowCursor;
+    }
+
+    if (fShowCursor)
+    {
+        ASSERT_KEEP(SUCCEEDED(ShowCursor()));
+    }
 
     return SUCCEEDED(hr) ? S_OK : hr;
 }
@@ -1017,31 +1044,14 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
         SelectObject(hdcScreenshot, _hbmScreenshotDimmed);
     }
 
-    if (_bmp.fCursorVisible)
+    // Paint objects:
     {
         HDC hdcSelection = fUseBackbuffer
             ? hdcBackbuffer
             : hdc;
 
-        HGDIOBJ hOldBmp = SelectObject(hdcScreenshot, _hbmCursorLight);
-        BitBlt(
-            hdcSelection,
-            _rcCursor.left, _rcCursor.top,
-            RECTWIDTH(_rcCursor), RECTHEIGHT(_rcCursor),
-            hdcScreenshot,
-            0, 0,
-            SRCCOPY
-        );
-
-        SelectObject(hdcScreenshot, hOldBmp);
-        SelectObject(hdcScreenshot, _hbmScreenshotDimmed);
-    }
-
-    if (true||_bmp.fAnyObjectDirty)
-    {
-        HDC hdcSelection = fUseBackbuffer
-            ? hdcBackbuffer
-            : hdc;
+        bool fIsAlphaSupported = PortableIsAlphaBlendAvailable()
+            && GetDeviceCaps(hdcSelection, BITSPIXEL) == 32;
 
         // Paint all objects from back to front.
         for (int i = 0; i < _vRenderObjs.GetSize(); i++)
@@ -1062,19 +1072,53 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
                     continue;
                 }
 
-                bool fObjNoBackbuffer = pRenderObject->_pObj->GetFlags() & SSEOF_NOBACKBUFFER;
+                bool fObjNoBackbuffer = !fIsAlphaSupported
+                    || pRenderObject->_pObj->GetFlags() & SSEOF_NOBACKBUFFER;
 
-                // If the object is dirty, then we will repaint its buffer. Otherwise, the object's
-                // paint routine is skipped, and the existing image in the buffer is copied back
-                // over the editor framebuffer.
+                // If the object is dirty, then we will repaint its buffer. Otherwise if possible and
+                // enabled by the object, the object's paint routine is skipped, and the existing image
+                // in our backbuffer is copied back over the editor framebuffer.
                 if (true||fObjNoBackbuffer || pRenderObject->_pObj->IsVisualDirty())
                 {
-                    ASSERT_KEEP(SUCCEEDED(_PaintRenderObjectVisualBuffer(hdcSelection, prcPaint, pRenderObject, fObjNoBackbuffer)));
+                    ASSERT_KEEP(SUCCEEDED(_PaintRenderObjectVisualBuffer(hdcSelection, prcPaint, pRenderObject, !fObjNoBackbuffer)));
                 }
                 else
                 {
                     // AlphaBlend the object's visual layer into the current framebuffer...
-                    // (if we support it, that is...)
+                    // (if we support it, that is...) <--- This doesn't really work out because GDI operations don't
+                    // give us an alpha channel. Thus, we can't really AlphaBlend the contents. I will check in the
+                    // code I've written for consideration of this approach, however I will remove the code in a
+                    // subsequent commit.
+                    BLENDFUNCTION bf = { 0 };
+                    bf.AlphaFormat = AC_SRC_ALPHA;
+                    bf.SourceConstantAlpha = 255;
+                    bf.BlendFlags = 0;
+                    bf.BlendOp = AC_SRC_OVER;
+
+                    HDC hdcLayer = CreateCompatibleDC(hdc);
+                    HGDIOBJ hBmpOldLayer = SelectObject(hdcLayer, pRenderObject->_hbmLayer);
+
+                    /*BitBlt(
+                        hdcSelection,
+                        pRenderObject->_rcLatestVisual.left, pRenderObject->_rcLatestVisual.top,
+                        RECTWIDTH(pRenderObject->_rcLatestVisual), RECTHEIGHT(pRenderObject->_rcLatestVisual),
+                        hdcLayer,
+                        0, 0,
+                        SRCCOPY
+                    );*/
+
+                    PortableAlphaBlend(
+                        hdcSelection,
+                        pRenderObject->_rcLatestVisual.left, pRenderObject->_rcLatestVisual.top,
+                        RECTWIDTH(pRenderObject->_rcLatestVisual), RECTHEIGHT(pRenderObject->_rcLatestVisual),
+                        hdcLayer,
+                        0, 0,
+                        RECTWIDTH(pRenderObject->_rcLatestVisual), RECTHEIGHT(pRenderObject->_rcLatestVisual),
+                        bf
+                    );
+
+                    SelectObject(hdcLayer, hBmpOldLayer);
+                    DeleteDC(hdcLayer);
                 }
             }
         }
@@ -1226,6 +1270,21 @@ HRESULT CScreenshotEditorRendererGDI::HandleWindowMessage(HWND hwnd, UINT uMsg, 
     }
 
     return S_FALSE;
+}
+
+HRESULT CScreenshotEditorRendererGDI::ShowCursor()
+{
+    return _ShowHideCursor(true);
+}
+
+HRESULT CScreenshotEditorRendererGDI::HideCursor()
+{
+    return _ShowHideCursor(false);
+}
+
+bool CScreenshotEditorRendererGDI::IsCursorShown()
+{
+    return _bmp.fCursorVisible;
 }
 
 HRESULT CScreenshotEditorRendererGDI::CreateRenderObject(IScreenshotEditorObject *pObj)
@@ -1419,12 +1478,6 @@ HRESULT CScreenshotEditorRendererGDI::_PaintSizingHelpers(HDC hdc, RECT *prc)
 HRESULT CScreenshotEditorRendererGDI::_PaintRenderObjectVisualBuffer(
     HDC hdcRenderTarget, RECT *prcPaint, CRenderObject *pRenderObject, bool fUseBackbuffer)
 {
-    // Double buffering isn't implemented yet for render objects. When it is, it will require
-    // AlphaBlend to be available on the platform (and probably a high color depth). In other
-    // cases, the render object is repainted when the region of the window it occupies is
-    // invalidated.
-    fUseBackbuffer = false;
-
     if (pRenderObject->HasGdiRenderer())
     {
         HDC hdcLayer = fUseBackbuffer
@@ -1440,9 +1493,14 @@ HRESULT CScreenshotEditorRendererGDI::_PaintRenderObjectVisualBuffer(
                 OffsetRect(&rcVisual, rcLogical.left, rcLogical.top);
                 pRenderObject->_rcLatestVisual = rcVisual;
 
-                if (fUseBackbuffer && !pRenderObject->_hbmLayer)
+                if (fUseBackbuffer)
                 {
-                    pRenderObject->_hbmLayer = CreateCompatibleBitmap(hdcRenderTarget, RECTWIDTH(rcVisual), RECTHEIGHT(rcVisual));
+                    if (pRenderObject->_hbmLayer)
+                        DeleteObject(pRenderObject->_hbmLayer);
+
+                    HDC hdcDesktop = GetDC(HWND_DESKTOP);
+                    pRenderObject->_hbmLayer = CreateCompatibleBitmap(hdcDesktop, RECTWIDTH(rcVisual), RECTHEIGHT(rcVisual));
+                    ReleaseDC(HWND_DESKTOP, hdcDesktop);
                 }
 
                 if (!fUseBackbuffer || pRenderObject->_hbmLayer)
@@ -1455,7 +1513,7 @@ HRESULT CScreenshotEditorRendererGDI::_PaintRenderObjectVisualBuffer(
                     if (!fUseBackbuffer)
                         SetViewportOrgEx(hdcLayer, -prcPaint->left + rcVisual.left, -prcPaint->top + rcVisual.top, &ptViewportOld);
                     else
-                        SetViewportOrgEx(hdcLayer, rcVisual.left, rcVisual.top, &ptViewportOld);
+                        SetViewportOrgEx(hdcLayer, 0, 0, &ptViewportOld);
 
                     ASSERT_KEEP(SUCCEEDED(pRenderObject->_pRendererGdi->SetGdiParameters(hdcLayer, prcPaint)));
                     ASSERT_KEEP(SUCCEEDED(pRenderObject->_pRendererGdi->Paint()));
@@ -1768,6 +1826,113 @@ HRESULT CScreenshotEditorRendererGDI::_FindRenderObjectFromInterfaceObject(
     return E_NOT_SET;
 }
 
+HBITMAP CScreenshotEditorRendererGDI::_MakeHideCursorBuffer(HBITMAP hbm)
+{
+    HDC hdcDesktop = GetDC(HWND_DESKTOP);
+    HDC hdc = CreateCompatibleDC(hdcDesktop);
+    HBITMAP hbmHidden = CreateCompatibleBitmap(hdcDesktop, RECTWIDTH(_rcCursor), RECTHEIGHT(_rcCursor));
+    HGDIOBJ hBmpOld = SelectObject(hdc, hbmHidden);
+    HDC hdcScreenshot = CreateCompatibleDC(hdcDesktop);
+    HGDIOBJ hBmpOldScreenshot = SelectObject(hdcScreenshot, hbm);
+
+    BitBlt(hdc, 0, 0, RECTWIDTH(_rcCursor), RECTHEIGHT(_rcCursor), hdcScreenshot, _rcCursor.left, _rcCursor.top, SRCCOPY);
+
+    SelectObject(hdcScreenshot, hBmpOldScreenshot);
+    DeleteDC(hdcScreenshot);
+    SelectObject(hdc, hBmpOld);
+    DeleteDC(hdc);
+    ReleaseDC(HWND_DESKTOP, hdcDesktop);
+
+    return hbmHidden;
+}
+
+HRESULT CScreenshotEditorRendererGDI::_MakeHideCursorBuffers()
+{
+    _hbmCursorNone = _MakeHideCursorBuffer(_hbmScreenshotLight);
+    _hbmCursorDimmedNone = _MakeHideCursorBuffer(_hbmScreenshotDimmed);
+    return (_hbmCursor && _hbmCursorDimmedNone) ? S_OK : E_OUTOFMEMORY;
+}
+
+HRESULT CScreenshotEditorRendererGDI::_ShowHideCursor(bool fVisible)
+{
+    {
+        HDC hdcDesktop = GetDC(HWND_DESKTOP);
+        HDC hdc = CreateCompatibleDC(hdcDesktop);
+        HGDIOBJ hBmpOld = SelectObject(hdc, _hbmScreenshotLight);
+
+        HDC hdcCursor = CreateCompatibleDC(hdcDesktop);
+        HGDIOBJ hBmpOldCursor = SelectObject(hdcCursor, fVisible ? _hbmCursor : _hbmCursorNone);
+
+        BitBlt(
+            hdc,
+            _rcCursor.left, _rcCursor.top,
+            RECTWIDTH(_rcCursor), RECTHEIGHT(_rcCursor),
+            hdcCursor,
+            0, 0,
+            SRCCOPY
+        );
+
+        SelectObject(hdcCursor, hBmpOldCursor);
+        DeleteDC(hdcCursor);
+        SelectObject(hdc, hBmpOld);
+        DeleteDC(hdc);
+        ReleaseDC(HWND_DESKTOP, hdcDesktop);
+    }
+
+    if (!_hbmCursorDimmed)
+    {
+        // We have to refresh the dimmed screenshot to reflect the changes.
+        if (_hbmScreenshotDimmed)
+            DeleteObject(_hbmScreenshotDimmed);
+        _MakeDimmedScreenshot();
+
+        // Cache the dimmed cursor so we don't have to rebuild the entire dimmed framebuffer next time
+        // we want to draw it:
+        HDC hdcDesktop = GetDC(HWND_DESKTOP);
+        HDC hdc = CreateCompatibleDC(hdcDesktop);
+        _hbmCursorDimmed = CreateCompatibleBitmap(hdcDesktop, RECTWIDTH(_rcCursor), RECTHEIGHT(_rcCursor));
+        HGDIOBJ hBmpOld = SelectObject(hdc, _hbmCursorDimmed);
+        HDC hdcScreenshot = CreateCompatibleDC(hdcDesktop);
+        HGDIOBJ hBmpOldScreenshot = SelectObject(hdcScreenshot, _hbmScreenshotDimmed);
+
+        BitBlt(hdc, 0, 0, RECTWIDTH(_rcCursor), RECTHEIGHT(_rcCursor), hdcScreenshot, _rcCursor.left, _rcCursor.top, SRCCOPY);
+
+        SelectObject(hdcScreenshot, hBmpOldScreenshot);
+        DeleteDC(hdcScreenshot);
+        SelectObject(hdc, hBmpOld);
+        DeleteDC(hdc);
+        ReleaseDC(HWND_DESKTOP, hdcDesktop);
+    }
+    else
+    {
+        HDC hdcDesktop = GetDC(HWND_DESKTOP);
+        HDC hdc = CreateCompatibleDC(hdcDesktop);
+        HGDIOBJ hBmpOld = SelectObject(hdc, _hbmScreenshotDimmed);
+
+        HDC hdcCursor = CreateCompatibleDC(hdcDesktop);
+        HGDIOBJ hBmpOldCursor = SelectObject(hdcCursor, fVisible ? _hbmCursorDimmed : _hbmCursorDimmedNone);
+
+        BitBlt(
+            hdc,
+            _rcCursor.left, _rcCursor.top,
+            RECTWIDTH(_rcCursor), RECTHEIGHT(_rcCursor),
+            hdcCursor,
+            0, 0,
+            SRCCOPY
+        );
+
+        SelectObject(hdcCursor, hBmpOldCursor);
+        DeleteDC(hdcCursor);
+        SelectObject(hdc, hBmpOld);
+        DeleteDC(hdc);
+        ReleaseDC(HWND_DESKTOP, hdcDesktop);
+    }
+
+    _bmp.fCursorVisible = fVisible;
+    InvalidateRect(_hwndRenderTarget, &_rcCursor, FALSE);
+    return S_OK;
+}
+
 //
 // CScreenshotEditorWindow
 //
@@ -1895,6 +2060,18 @@ LRESULT CScreenshotEditorWindow::v_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
         case WM_SSE_SAVEIMAGE:
         {
             SaveImageToFileAndAccept();
+            return 0;
+        }
+
+        case WM_SSE_SHOWCURSOR:
+        {
+            _pRenderer->ShowCursor();
+            return 0;
+        }
+
+        case WM_SSE_HIDECURSOR:
+        {
+            _pRenderer->HideCursor();
             return 0;
         }
     }
@@ -2793,6 +2970,13 @@ STDMETHODIMP CScreenshotEditorWindow::SetSelectedObject(IScreenshotEditorObject 
 {
     // TODO: Implement!
     return E_NOTIMPL;
+}
+
+bool CScreenshotEditorWindow::IsCursorShown()
+{
+    // The architecture is a bit messy here. I might have the editor window track this on its own instead of
+    // asking the renderer.
+    return _pRenderer->IsCursorShown();
 }
 
 HRESULT CScreenshotEditorWindow::CopyToClipboardAndAccept()

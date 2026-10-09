@@ -285,6 +285,7 @@ HRESULT TakeScreenshot(OUT CScreenshotContext **ppContextOut)
             ICONINFO ii = { 0 };
             if (GetIconInfo(ci.hCursor, &ii))
             {
+                pContext->_hcursor = ci.hCursor;
                 pContext->_hbmCursorColor = ii.hbmColor;
                 pContext->_hbmCursorMask = ii.hbmMask;
                 pContext->_ptCursor.x -= ii.xHotspot;

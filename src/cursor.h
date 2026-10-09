@@ -3,6 +3,7 @@
 
 class CCursorRenderer
 {
+	HCURSOR _hcursor;
 	HBITMAP _hbmScreenshot;
 	HBITMAP _hbmCursorColor;
 	HBITMAP _hbmCursorMask;
@@ -12,8 +13,9 @@ class CCursorRenderer
 	HRESULT _PremultiplyAlpha(HBITMAP hbmIn, OUT HBITMAP *phbmOut);
 
 public:
-	CCursorRenderer(HBITMAP hbmScreenshot, HBITMAP hbmCursorColor, HBITMAP hbmCursorMask, POINT ptCursor)
+	CCursorRenderer(HBITMAP hbmScreenshot, HCURSOR hcursor, HBITMAP hbmCursorColor, HBITMAP hbmCursorMask, POINT ptCursor)
 		: _hbmScreenshot(hbmScreenshot)
+		, _hcursor(hcursor)
 		, _hbmCursorColor(hbmCursorColor)
 		, _hbmCursorMask(hbmCursorMask)
 	{

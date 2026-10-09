@@ -202,8 +202,10 @@ class CScreenshotEditorRendererGDI
     HPEN _hpenSizingHelpers;
     HBITMAP _hbmScreenshotLight;
     HBITMAP _hbmScreenshotDimmed;
-    HBITMAP _hbmCursorLight;
+    HBITMAP _hbmCursor;
+    HBITMAP _hbmCursorNone;
     HBITMAP _hbmCursorDimmed;
+    HBITMAP _hbmCursorDimmedNone;
     HBITMAP *_hbmMipmaps;
     CRenderObject *_pRenderObjSel;
     RECT _rcSelection;
@@ -245,6 +247,9 @@ class CScreenshotEditorRendererGDI
     HRESULT _DitherScreenshot(BITMAP *pbm);
     HRESULT _FindRenderObjectFromInterfaceObject(
         IScreenshotEditorObject *pIfaceObj, OUT CRenderObject **ppRenderObjOut, OUT int *pIdxOut = nullptr);
+    HBITMAP _MakeHideCursorBuffer(HBITMAP hbm);
+    HRESULT _MakeHideCursorBuffers();
+    HRESULT _ShowHideCursor(bool fVisible);
 
 public:
     static constexpr int c_iDimAmount = 0xFF * 0.75;
@@ -258,6 +263,10 @@ public:
 		, _hpenSizingHelpers(nullptr)
         , _hbmScreenshotLight(pCtx->_hbmScreenshot)
 		, _hbmScreenshotDimmed(nullptr)
+        , _hbmCursor(nullptr)
+        , _hbmCursorNone(nullptr)
+        , _hbmCursorDimmed(nullptr)
+        , _hbmCursorDimmedNone(nullptr)
 		, _hbmMipmaps(nullptr)
         , _pRenderObjSel(nullptr)
         , _cMipmaps(0)
@@ -276,6 +285,9 @@ public:
     HRESULT UpdateSizingHelpersVisibility(bool fVisible);
     HRESULT SetMarqueeSelection(bool fMarquee);
     HRESULT HandleWindowMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+    HRESULT ShowCursor();
+    HRESULT HideCursor();
+    bool IsCursorShown();
     HRESULT CreateRenderObject(IScreenshotEditorObject *pObj);
     HRESULT RemoveRenderObject(IScreenshotEditorObject *pObj);
     HRESULT InvalidateRenderObject(IScreenshotEditorObject *pObj);
@@ -455,6 +467,8 @@ public:
         WM_SSE_CHANGETOOL,
         WM_SSE_COPYTOCLIPBOARD,
         WM_SSE_SAVEIMAGE,
+        WM_SSE_SHOWCURSOR,
+        WM_SSE_HIDECURSOR,
     };
 
     //@Begin IUnknown
@@ -506,6 +520,7 @@ public:
         ZeroMemory(&_rcDragBegin, sizeof(_rcDragBegin));
 	}
 
+    bool IsCursorShown();
     HRESULT CopyToClipboardAndAccept();
     HRESULT SaveImageToFileAndAccept();
     int GetExtensionToolCount();

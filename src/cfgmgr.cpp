@@ -23,6 +23,24 @@ HRESULT CConfigManager::Initialize()
     return S_OK;
 }
 
+HRESULT CConfigManager::GetBool(const TCHAR *pszName, OUT bool *pfOut)
+{
+    if (!pszName)
+        return E_POINTER;
+
+    DWORD dwValue = 0;
+    DWORD dwcch = sizeof(DWORD);
+    LSTATUS ls = RegGetValue(_hkey, nullptr, pszName, RRF_RT_REG_DWORD, nullptr, &dwValue, &dwcch);
+
+    if (ls == ERROR_SUCCESS)
+    {
+        *pfOut = dwValue != 0;
+        return S_OK;
+    }
+
+    return E_NOT_SET;
+}
+
 HRESULT CConfigManager::GetString(const TCHAR *pszName, OUT TCHAR **ppszOut)
 {
     if (!pszName || !ppszOut)

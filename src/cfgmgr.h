@@ -15,5 +15,6 @@ public:
     }
 
     HRESULT Initialize();
+    HRESULT GetBool(const TCHAR *pszName, OUT bool *pfOut);
     HRESULT GetString(const TCHAR *pszName, OUT TCHAR **ppszOut);
 };

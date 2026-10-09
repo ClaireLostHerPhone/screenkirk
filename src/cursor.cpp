@@ -55,6 +55,7 @@ HRESULT CCursorRenderer::_PremultiplyAlpha(HBITMAP hbmIn, OUT HBITMAP *phbmOut)
 
 				int cLength = bm.bmWidth * bm.bmHeight;
 				ULONG *pulSrc = (ULONG *)pvPixels;
+				BYTE bFirstAlpha = (pulSrc[0] & 0xFF000000) >> 24;
 				for (int i = 0; i < cLength; i++)
 				{
 					BYTE b = GetBValue(*pulSrc);
@@ -62,7 +63,7 @@ HRESULT CCursorRenderer::_PremultiplyAlpha(HBITMAP hbmIn, OUT HBITMAP *phbmOut)
 					BYTE r = GetRValue(*pulSrc);
 					BYTE a = (pulSrc[i] & 0xFF000000) >> 24;
 
-					if (a != 0)
+					if (a != bFirstAlpha)
 					{
 						b = (b * a) / 255;
 						g = (g * a) / 255;
@@ -114,33 +115,49 @@ HRESULT CCursorRenderer::RenderCursor(HBITMAP *phbmCursor, RECT *prcCursor)
 	SelectObject(hdcScreenshot, hScreenshotOld);
 	DeleteDC(hdcScreenshot);
 
+	// We just use this procedure to check if the cursor has premultiplied alpha. We don't actually
+	// use the result.
 	HBITMAP hbmCursorPremult = nullptr;
 	_PremultiplyAlpha(_hbmCursorColor, &hbmCursorPremult);
-
-	// Paint the cursor:
-	BLENDFUNCTION bf = { 0 };
-	bf.BlendOp = AC_SRC_OVER;
-	bf.BlendFlags = 0;
-	bf.AlphaFormat = AC_SRC_ALPHA;
-	bf.SourceConstantAlpha = 255;
 	
 	if (hbmCursorPremult)
 	{
 		HDC hdcCursor = CreateCompatibleDC(hdcDesktop);
 		HGDIOBJ hBmpOld = SelectObject(hdcCursor, hbmCursorPremult);
 
-		PortableAlphaBlend(hdc, 0, 0, bm.bmWidth, bm.bmHeight, hdcCursor, 0, 0, bm.bmWidth, bm.bmHeight, bf);
+		// If we have an alpha cursor, then we'll just draw it with DrawIcon. This avoids alpha issues
+		// with animated cursors that I couldn't figure out how to avoid with AlphaBlending the bitmap
+		// from GetIconInfo.
+		DrawIcon(hdc, 0, 0, _hcursor);
 
 		DeleteDC(hdcCursor);
 	}
 	else if (_hbmCursorColor) // Premultiplied cursor is not available.
 	{
-		// TODO: Rewrite this path to use the mask instead of alpha-blending.
 		HDC hdcCursor = CreateCompatibleDC(hdcDesktop);
-		HGDIOBJ hBmpOld = SelectObject(hdcCursor, _hbmCursorColor);
+		HGDIOBJ hBmpOld = SelectObject(hdcCursor, _hbmCursorMask);
 
-		PortableAlphaBlend(hdc, 0, 0, bm.bmWidth, bm.bmHeight, hdcCursor, 0, 0, bm.bmWidth, bm.bmHeight, bf);
+		BitBlt(
+			hdc,
+			0, 0,
+			bm.bmWidth, bm.bmHeight,
+			hdcCursor,
+			0, 0,
+			SRCAND
+		);
 
+		SelectObject(hdcCursor, hBmpOld);
+		hBmpOld = SelectObject(hdcCursor, _hbmCursorColor);
+
+		BitBlt(
+			hdc,
+			0, 0,
+			bm.bmWidth, bm.bmHeight,
+			hdcCursor,
+			0, 0,
+			SRCINVERT
+		);
+		SelectObject(hdcCursor, hBmpOld);
 		DeleteDC(hdcCursor);
 	}
 	else // No color cursor is available, so the mask cursor will be drawn instead.
@@ -165,6 +182,7 @@ HRESULT CCursorRenderer::RenderCursor(HBITMAP *phbmCursor, RECT *prcCursor)
 			0, bm.bmHeight / 2,
 			SRCINVERT
 		);
+		SelectObject(hdcCursor, hBmpOld);
 		DeleteDC(hdcCursor);
 
 		bm.bmHeight /= 2;
