@@ -221,6 +221,7 @@ class CScreenshotEditorRendererGDI
     struct Bitmap
     {
         bool fHasAnySelectionMade : 1;
+        bool fPreviewSelection : 1;
         bool fAnyObjectDirty : 1;
         bool fDrawSelectionSizeHelpers : 1;
         bool fDrawMarqueeSelection : 1;
@@ -277,6 +278,7 @@ public:
     {
         ZeroMemory(&_rcSelection, sizeof(_rcSelection));
         ZeroMemory(&_rcSelectionVisual, sizeof(_rcSelectionVisual));
+        ZeroMemory(&_bmp, sizeof(_bmp));
     }
 
     ~CScreenshotEditorRendererGDI();
@@ -284,6 +286,7 @@ public:
     HRESULT Initialize();
     HRESULT Paint(HDC hdc, RECT *prcPaint = nullptr);
     HRESULT UpdateSelection(RECT *prcNew);
+    HRESULT PreviewSelection(RECT *prcNew);
     HRESULT UpdateSizingHelpersVisibility(bool fVisible);
     HRESULT SetMarqueeSelection(bool fMarquee);
     HRESULT HandleWindowMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -339,6 +342,7 @@ public:
 private:
     CDynamicArray<EditHistoryData> _vData;
     int _iPos;
+    bool _fIsLocked;
 
     HRESULT _Push(EditHistoryData *pData);
     HRESULT _DestroyEntry(int idxEntry);
@@ -346,6 +350,7 @@ private:
 public:
     CEditHistoryManager()
         : _iPos(0)
+        , _fIsLocked(false)
     {
     }
 
@@ -368,6 +373,47 @@ public:
     HRESULT GetPrevious(EditHistoryData *pData);
     HRESULT GetNext(EditHistoryData *pData);
     HRESULT GetCurrent(EditHistoryData *pData);
+    HRESULT Lock();
+    HRESULT Unlock();
+};
+
+class CScreenshotEditorSelectionTemplateObject
+    : public IScreenshotEditorObject
+{
+    IScreenshotEditor *_pEditor;
+    RECT _rcPosLogical;
+
+public:
+    IMPLEMENT_IUNKNOWN;
+
+    //@Begin IObjectWithSite
+    STDMETHODIMP GetSite(REFIID riid, void **ppvSite) override;
+    STDMETHODIMP SetSite(IUnknown *pUnkSite) override;
+    //@End IObjectWithSite
+
+    //@Begin IScreenshotRendererObject
+    STDMETHODIMP_(const TCHAR *) GetClassName() override
+    {
+        return TEXT("quikshot.CScreenshotEditorSelectionObject");
+    }
+    STDMETHODIMP_(ULONG) GetFlags() override
+    {
+        return SSEOF_SELECTIONTEMPLATE | SSEOF_NODRAG | SSEOF_NORENDERER;
+    }
+    STDMETHODIMP InsertedIntoDocument() override { return S_OK; }
+    STDMETHODIMP GetLogicalRect(IN RECT *prc) override;
+    STDMETHODIMP GetVisualRect(IN RECT *prc) override { return GetLogicalRect(prc); }
+    STDMETHODIMP_(BOOL) IsVisualDirty() override { return false; }
+    STDMETHODIMP Move(RECT *prcNew) override { _rcPosLogical = *prcNew; return S_OK; }
+    STDMETHODIMP CreateRenderer(const REFIID riid, OUT IScreenshotEditorObjectRenderer **ppRendererOut) override { return E_NOINTERFACE; }
+    //@End IScreenshotRendererObject
+
+    CScreenshotEditorSelectionTemplateObject()
+        : _uRefCount(0)
+        , _pEditor(nullptr)
+    {
+        ZeroMemory(&_rcPosLogical, sizeof(_rcPosLogical));
+    }
 };
 
 //
@@ -407,6 +453,7 @@ private:
     CEditorToolbar *_pToolbar;
     CEditorFloatingToolbar *_pFloatingToolbar;
     IScreenshotEditorObject *_pSelectedObject;
+    IScreenshotEditorObject *_pHoveredObj;
     CDynamicArray<IScreenshotEditorObject *> _vObjs;
     CDynamicArray<ExtensionToolInfo> _vExtToolInfo;
     POINT _ptSelectionOrigin;
@@ -419,7 +466,6 @@ private:
     bool _fEnumeratedWindows;
     bool _fIsSelectingRegion;
     bool _fHasAnySelectionMade;
-    bool _fIsManagingHistory;
 
 protected:
     inline bool _IsExtensionTool()
@@ -455,6 +501,7 @@ protected:
     HRESULT _RemoveObject(IScreenshotEditorObject *pObj);
     IScreenshotEditorObject *_GetMousedOverObject();
     HRESULT _SelectObject(IScreenshotEditorObject *pObj);
+    HRESULT _DoPreviewSelection(IScreenshotEditorObject *pObj);
 
     /**
      * Event callback from the window enumeration thread from the screenshot
@@ -510,13 +557,13 @@ public:
         , _pToolbar(nullptr)
 		, _pFloatingToolbar(nullptr)
         , _pSelectedObject(nullptr)
+        , _pHoveredObj(nullptr)
         , _tool(SSET_SELECT)
 		, _pExtTool(nullptr)
         , _iToolMode(0)
         , _fEnumeratedWindows(false)
         , _fIsSelectingRegion(false)
         , _fHasAnySelectionMade(false)
-        , _fIsManagingHistory(false)
 	{
         _pHistoryMgr = new CEditHistoryManager();
 

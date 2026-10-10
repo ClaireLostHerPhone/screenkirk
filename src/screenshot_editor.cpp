@@ -384,6 +384,14 @@ HRESULT CEditorToolbar::SelectOrdinalTool(int idx)
         TBBUTTON tbb;
         SendMessage(_hwndToolbar, TB_GETBUTTON, idx - 1, (LPARAM)&tbb);
 
+        if (tbb.idCommand == SSET_SHOWCURSOR)
+        {
+            bool fIsChecked = SendMessage(_hwndToolbar, TB_ISBUTTONCHECKED, tbb.idCommand, 0);
+            SendMessage(_hwndToolbar, TB_CHECKBUTTON, tbb.idCommand, !fIsChecked);
+            SendMessage(_hwnd, WM_COMMAND, MAKEWPARAM(tbb.idCommand, 0), 0);
+            return S_OK;
+        }
+
         SendMessage(_pEditor->GetHWND(), CScreenshotEditorWindow::WM_SSE_CHANGETOOL, tbb.idCommand, 0);
         return S_OK;
     }
@@ -1074,7 +1082,7 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
         }
     }
     
-    if (_bmp.fHasAnySelectionMade)
+    if (_bmp.fHasAnySelectionMade || _bmp.fPreviewSelection)
     {
         HDC hdcSelection = fUseBackbuffer
             ? hdcBackbuffer
@@ -1084,7 +1092,7 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
             ? &_pRenderObjSel->_rcLatestLog
             : &_rcSelection;
 
-        _PaintSelectionRectangle(hdcSelection, prcTarget, _bmp.fDrawMarqueeSelection);
+        _PaintSelectionRectangle(hdcSelection, prcTarget, _bmp.fHasAnySelectionMade && _bmp.fDrawMarqueeSelection);
         if (_bmp.fDrawSelectionSizeHelpers)
         {
             _PaintSizingHelpers(hdcSelection, prcTarget);
@@ -1173,6 +1181,52 @@ HRESULT CScreenshotEditorRendererGDI::UpdateSelection(RECT *prcNew)
     return S_OK;
 }
 
+HRESULT CScreenshotEditorRendererGDI::PreviewSelection(RECT *prcNew)
+{
+    RECT rcSelectionOld = _rcSelectionVisual;
+    if (prcNew)
+    {
+        _rcSelectionVisual = *prcNew;
+        _bmp.fPreviewSelection = true;
+    }
+    else
+    {
+        ZeroMemory(&_rcSelectionVisual, sizeof(_rcSelectionVisual));
+        _bmp.fPreviewSelection = false;
+    }
+
+    if (RECTWIDTH(_rcSelectionVisual) != RECTWIDTH(rcSelectionOld)
+        || RECTHEIGHT(_rcSelectionVisual) != RECTHEIGHT(rcSelectionOld))
+    {
+        _bmp.fSelectionDirty = true;
+    }
+
+    if (_rcSelectionVisual.left != rcSelectionOld.left)
+    {
+        _bmp.fSelectionDirtyWest = true;
+    }
+    if (_rcSelectionVisual.top != rcSelectionOld.top)
+    {
+        _bmp.fSelectionDirtyNorth = true;
+    }
+    if (_rcSelectionVisual.right != rcSelectionOld.right)
+    {
+        _bmp.fSelectionDirtyEast = true;
+    }
+    if (_rcSelectionVisual.bottom != rcSelectionOld.bottom)
+    {
+        _bmp.fSelectionDirtySouth = true;
+    }
+
+    _rcSelection = _rcSelectionVisual;
+
+    RECT rcUnion;
+    UnionRect(&rcUnion, &rcSelectionOld, &_rcSelectionVisual);
+    InvalidateRect(_hwndRenderTarget, &rcUnion, FALSE);
+
+    return S_OK;
+}
+
 HRESULT CScreenshotEditorRendererGDI::UpdateSizingHelpersVisibility(bool fVisible)
 {
     if (fVisible != _bmp.fDrawSelectionSizeHelpers)
@@ -1239,6 +1293,9 @@ bool CScreenshotEditorRendererGDI::IsCursorShown()
 HRESULT CScreenshotEditorRendererGDI::CreateRenderObject(IScreenshotEditorObject *pObj)
 {
     CRenderObject ro;
+
+    if (pObj->GetFlags() & SSEOF_NORENDERER)
+        return S_FALSE;
 
     ro._pObj = pObj;
     pObj->AddRef();
@@ -1315,7 +1372,6 @@ HRESULT CScreenshotEditorRendererGDI::InvalidateRenderObject(IScreenshotEditorOb
         }
     }
 
-    assert(0);
     return E_FAIL;
 }
 
@@ -1491,11 +1547,6 @@ HRESULT CScreenshotEditorRendererGDI::_PaintRenderObjectVisualBuffer(
         }
 
         return S_OK;
-    }
-    else
-    {
-        // Unimplemented.
-        assert(0);
     }
 
     return E_NOTIMPL;
@@ -1895,6 +1946,63 @@ HRESULT CScreenshotEditorRendererGDI::_ShowHideCursor(bool fVisible)
 }
 
 //
+// CScreenshotEditorSelectionTemplateObject
+//
+
+STDMETHODIMP CScreenshotEditorSelectionTemplateObject::QueryInterface(const IID &riid, void **ppvOut)
+{
+    if (IsEqualGUID(riid, IID_IUnknown)
+        || IsEqualGUID(riid, IID_IScreenshotEditorObject))
+    {
+        *ppvOut = static_cast<IScreenshotEditorObject *>(this);
+        AddRef();
+        return S_OK;
+    }
+
+    return E_NOINTERFACE;
+}
+
+STDMETHODIMP CScreenshotEditorSelectionTemplateObject::GetSite(REFIID riid, void **ppvSite)
+{
+    if (!ppvSite)
+        return E_POINTER;
+    if (!_pEditor)
+        return E_NOINTERFACE;
+
+    return _pEditor->QueryInterface(riid, ppvSite);
+}
+
+STDMETHODIMP CScreenshotEditorSelectionTemplateObject::SetSite(IUnknown *pUnkSite)
+{
+    HRESULT hr = E_FAIL;
+
+    if (_pEditor)
+    {
+        _pEditor->Release();
+        _pEditor = nullptr;
+    }
+
+    if (pUnkSite)
+    {
+        hr = pUnkSite->QueryInterface(IID_PPV_ARGS(&_pEditor));
+    }
+    else
+    {
+        hr = S_OK;
+    }
+
+    return hr;
+}
+
+STDMETHODIMP CScreenshotEditorSelectionTemplateObject::GetLogicalRect(IN RECT *prc)
+{
+    if (!prc)
+        return E_POINTER;
+    *prc = _rcPosLogical;
+    return S_OK;
+}
+
+//
 // CScreenshotEditorWindow
 //
 
@@ -2054,6 +2162,18 @@ LRESULT CScreenshotEditorWindow::_OnCreate(CREATESTRUCT *pCs)
 
     ASSERT_KEEP(SUCCEEDED(_LoadExtensionTools()));
 
+    // Testing:
+    _pHistoryMgr->Lock();
+    CScreenshotEditorSelectionTemplateObject *pSelPreviewTest = new (std::nothrow) CScreenshotEditorSelectionTemplateObject();
+    RECT rcSelPreview = { 0 };
+    rcSelPreview.left = 2500;
+    rcSelPreview.right = 2500 + 1000;
+    rcSelPreview.top = 550;
+    rcSelPreview.bottom = 550 + 200;
+    pSelPreviewTest->Move(&rcSelPreview);
+    InsertObject(pSelPreviewTest);
+    _pHistoryMgr->Unlock();
+
     return DefWindowProc(_hwnd, WM_CREATE, 0, (LPARAM)pCs);
 }
 
@@ -2190,9 +2310,11 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
         else if (_tool == SSET_DRAG)
         {
             RECT rcTarget = _rcSelection;
-            if (_pSelectedObject)
+            IScreenshotEditorObject *pSelectedObject = nullptr;
+            if (_pSelectedObject && !(_pSelectedObject->GetFlags() & SSEOF_NODRAG))
             {
                 _pSelectedObject->GetLogicalRect(&rcTarget);
+                pSelectedObject = _pSelectedObject;
             }
 
             if (_iToolMode == DRAGM_DRAG)
@@ -2206,14 +2328,14 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
 
                 OffsetRect(&rcTarget, iX, iY);
 
-                if (!_pSelectedObject)
+                if (!pSelectedObject)
                 {
                     _rcSelection = rcTarget;
                     _pRenderer->UpdateSelection(&rcTarget);
                 }
                 else
                 {
-                    _pSelectedObject->Move(&rcTarget);
+                    pSelectedObject->Move(&rcTarget);
                 }
             }
             else // Sizing modes:
@@ -2258,14 +2380,14 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
                     _iToolMode ^= (DRAGM_SIZES | DRAGM_SIZEN);
                 }
 
-                if (!_pSelectedObject)
+                if (!pSelectedObject)
                 {
                     _rcSelection = rcTarget;
                     _pRenderer->UpdateSelection(&rcTarget);
                 }
                 else
                 {
-                    _pSelectedObject->Move(&rcTarget);
+                    pSelectedObject->Move(&rcTarget);
                 }
             }
         }
@@ -2299,7 +2421,7 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
         ptCursor.y = y;
 
         RECT rcTarget = _rcSelection;
-        if (_pSelectedObject)
+        if (_pSelectedObject && !(_pSelectedObject->GetFlags() & SSEOF_NODRAG))
             _pSelectedObject->GetLogicalRect(&rcTarget);
         int dm = _ComputeDragMode(ptCursor, &rcTarget);
 
@@ -2307,6 +2429,15 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
         {
             _iToolMode = (DragMode)dm;
             _UpdateCursor();
+        }
+    }
+    else if (_tool == SSET_SELECT && !_fHasAnySelectionMade)
+    {
+        IScreenshotEditorObject *pObjHover = _GetMousedOverObject();
+        if (pObjHover != _pHoveredObj)
+        {
+            _pHoveredObj = pObjHover;
+            _DoPreviewSelection(pObjHover);
         }
     }
     
@@ -2341,7 +2472,7 @@ LRESULT CScreenshotEditorWindow::_OnMouseLButtonDown(int x, int y, WPARAM flags)
         if (_iToolMode == DRAGM_DRAG)
         {
             IScreenshotEditorObject *pObjHovered = _GetMousedOverObject();
-            if (pObjHovered)
+            if (pObjHovered && !(pObjHovered->GetFlags() & SSEOF_NODRAG))
             {
                 ASSERT_KEEP(SUCCEEDED(_SelectObject(pObjHovered)));
                 ASSERT_KEEP(SUCCEEDED(pObjHovered->GetLogicalRect(&_rcDragBegin)));
@@ -2377,7 +2508,17 @@ LRESULT CScreenshotEditorWindow::_OnMouseLButtonUp(int x, int y, WPARAM flags)
     // Photoshop or Paint.NET.
     if (_tool == SSET_SELECT && (x == _ptSelectionOrigin.x && y == _ptSelectionOrigin.y))
     {
-        _CancelSelection();
+        IScreenshotEditorObject *pObjHover = _GetMousedOverObject();
+        if (pObjHover)
+        {
+            RECT rcSelection;
+            ASSERT_KEEP(SUCCEEDED(pObjHover->GetLogicalRect(&rcSelection)));
+            ASSERT_KEEP(SUCCEEDED(SetSelectedRegion(&rcSelection)));
+        }
+        else
+        {
+            _CancelSelection();
+        }
     }
 
     _fIsSelectingRegion = false;
@@ -2525,7 +2666,7 @@ HRESULT CScreenshotEditorWindow::_LoadExtensionTools()
 
 HRESULT CScreenshotEditorWindow::_ApplyHistoryState(CEditHistoryManager::EditHistoryData *pehd)
 {
-    _fIsManagingHistory = true;
+    _pHistoryMgr->Lock();
     HRESULT hr = S_OK;
 
     if (pehd->idAction == CEditHistoryManager::EHID_SELECTREGION)
@@ -2543,7 +2684,7 @@ HRESULT CScreenshotEditorWindow::_ApplyHistoryState(CEditHistoryManager::EditHis
     }
     // Not handled yet: OBJECTMOVE, OBJECT (unique)
 
-    _fIsManagingHistory = false;
+    _pHistoryMgr->Unlock();
     return hr;
 }
 
@@ -2557,7 +2698,7 @@ HRESULT CScreenshotEditorWindow::_Undo()
         hr = _pHistoryMgr->GetCurrent(&ehdCur);
         if (SUCCEEDED(hr))
         {
-            _fIsManagingHistory = true;
+            _pHistoryMgr->Lock();
 
             // Invert the current case (if necessary):
             if (ehdCur.idAction == CEditHistoryManager::EHID_OBJECTCREATE)
@@ -2572,7 +2713,7 @@ HRESULT CScreenshotEditorWindow::_Undo()
             }
 
             // Apply the previous case:
-            hr = _ApplyHistoryState(&ehd); // Unsets _fIsManagingHistory for us.
+            hr = _ApplyHistoryState(&ehd); // Unlocks the history manager for us.
             _pHistoryMgr->Rewind();
         }
     }
@@ -2769,6 +2910,7 @@ void CScreenshotEditorWindow::_CancelSelection()
     _fHasAnySelectionMade = false;
     _pRenderer->UpdateSelection(&_rcSelection);
     _HideFloatingToolbar();
+    _DoPreviewSelection(_pHoveredObj);
 }
 
 int CScreenshotEditorWindow::_ComputeDragMode(POINT ptCursor, RECT *prcDraggedObj)
@@ -2816,8 +2958,7 @@ HRESULT CScreenshotEditorWindow::_RemoveObject(IScreenshotEditorObject *pObj)
             // The resulting history entry will add a reference to the object and hold
             // it until it is destroyed. If we did it the other way around, then we risk
             // freeing the object from memory (thus breaking redo functionality)
-            if (!_fIsManagingHistory)
-                _pHistoryMgr->PushObjectRemove(pObj);
+            _pHistoryMgr->PushObjectRemove(pObj);
 
             pObj->Release();
             _vObjs.Remove(i);
@@ -2877,6 +3018,23 @@ HRESULT CScreenshotEditorWindow::_SelectObject(IScreenshotEditorObject *pObj)
     return _pRenderer->ChangeSelectedObject(pObj);
 }
 
+HRESULT CScreenshotEditorWindow::_DoPreviewSelection(IScreenshotEditorObject *pObj)
+{
+    if (pObj && (pObj->GetFlags() & SSEOF_SELECTIONTEMPLATE))
+    {
+        RECT rcSelectionPreview;
+        pObj->GetLogicalRect(&rcSelectionPreview);
+
+        _pRenderer->PreviewSelection(&rcSelectionPreview);
+    }
+    else
+    {
+        _pRenderer->PreviewSelection(nullptr);
+    }
+
+    return S_OK;
+}
+
 HRESULT CScreenshotEditorWindow::_OnGetWindowPositions()
 {
     _fEnumeratedWindows = true;
@@ -2929,8 +3087,7 @@ STDMETHODIMP CScreenshotEditorWindow::InsertObject(IScreenshotEditorObject *pObj
             _RemoveObject(pObj);
         }
 
-        if (!_fIsManagingHistory)
-            _pHistoryMgr->PushObjectCreate(pObj);
+        _pHistoryMgr->PushObjectCreate(pObj);
 
         InvalidateObject(pObj);
         hr = S_OK;
@@ -3006,9 +3163,18 @@ STDMETHODIMP CScreenshotEditorWindow::GetSelectedRegion(RECT *prc)
 
 STDMETHODIMP CScreenshotEditorWindow::SetSelectedRegion(RECT *prc)
 {
-    if (!prc)
-        return E_POINTER;
-    _rcSelection = *prc;
+    if (prc)
+    {
+        _rcSelection = *prc;
+        ASSERT_KEEP(SUCCEEDED(_pRenderer->UpdateSelection(&_rcSelection)));
+        _fHasAnySelectionMade = true;
+    }
+    else
+    {
+        RECT rcZero = { 0 };
+        ASSERT_KEEP(SUCCEEDED(_pRenderer->UpdateSelection(&rcZero)));
+        _fHasAnySelectionMade = false;
+    }
     return S_OK;
 }
 
@@ -3313,6 +3479,9 @@ CEditHistoryManager::~CEditHistoryManager()
 
 HRESULT CEditHistoryManager::PushSelectRegion(RECT *prcSelectionNew)
 {
+    if (_fIsLocked)
+        return E_ACCESSDENIED;
+
     EditHistoryData ehd;
     ehd.idAction = EHID_SELECTREGION;
     ehd.data.selection.rcRegionNew = *prcSelectionNew;
@@ -3322,6 +3491,9 @@ HRESULT CEditHistoryManager::PushSelectRegion(RECT *prcSelectionNew)
 
 HRESULT CEditHistoryManager::PushObjectCreate(IScreenshotEditorObject *pObj)
 {
+    if (_fIsLocked)
+        return E_ACCESSDENIED;
+
     EditHistoryData ehd;
     ehd.idAction = EHID_OBJECTCREATE;
     ehd.data.pObject = pObj;
@@ -3332,6 +3504,9 @@ HRESULT CEditHistoryManager::PushObjectCreate(IScreenshotEditorObject *pObj)
 
 HRESULT CEditHistoryManager::PushObjectRemove(IScreenshotEditorObject *pObj)
 {
+    if (_fIsLocked)
+        return E_ACCESSDENIED;
+
     EditHistoryData ehd;
     ehd.idAction = EHID_OBJECTREMOVE;
     ehd.data.pObject = pObj;
@@ -3342,6 +3517,9 @@ HRESULT CEditHistoryManager::PushObjectRemove(IScreenshotEditorObject *pObj)
 
 HRESULT CEditHistoryManager::PushObjectMove(IScreenshotEditorObject *pObj, RECT *prcNew, RECT *prcOld)
 {
+    if (_fIsLocked)
+        return E_ACCESSDENIED;
+
     EditHistoryData ehd;
     ehd.idAction = EHID_OBJECTMOVE;
     ehd.data.objectMove.pObject = pObj;
@@ -3354,6 +3532,9 @@ HRESULT CEditHistoryManager::PushObjectMove(IScreenshotEditorObject *pObj, RECT 
 
 HRESULT CEditHistoryManager::PushObjectUnique(IScreenshotEditorObject *pObj, ULONG ulEventId)
 {
+    if (_fIsLocked)
+        return E_ACCESSDENIED;
+
     EditHistoryData ehd;
     ehd.idAction = EHID_OBJECT;
     ehd.data.objectUnique.pObject = pObj;
@@ -3396,5 +3577,17 @@ HRESULT CEditHistoryManager::GetCurrent(EditHistoryData *pData)
         return E_BOUNDS;
 
     *pData = _vData[_iPos];
+    return S_OK;
+}
+
+HRESULT CEditHistoryManager::Lock()
+{
+    _fIsLocked = true;
+    return S_OK;
+}
+
+HRESULT CEditHistoryManager::Unlock()
+{
+    _fIsLocked = false;
     return S_OK;
 }

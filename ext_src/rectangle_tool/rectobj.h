@@ -46,7 +46,6 @@ public:
 
     CRectangleObject(RectangleType type)
         : _uRefCount(0)
-        , _pUnkSite(nullptr)
         , _pEditor(nullptr)
         , _hdc(nullptr)
         , _type(type)
@@ -54,7 +53,6 @@ public:
     {
         ZeroMemory(&_rcPosLogical, sizeof(_rcPosLogical));
         ZeroMemory(&_rcPosVisual, sizeof(_rcPosVisual));
-        ZeroMemory(&_rcPaint, sizeof(_rcPaint));
     }
 
     HRESULT UpdatePosition(RECT *prc);

@@ -4,7 +4,11 @@
 #include <comdef.h>
 
 #ifndef DECLARE_INTERFACE_IID_
+#ifdef __cplusplus
 #define DECLARE_INTERFACE_IID_(iface, baseiface, iid)   interface DECLSPEC_UUID(iid) DECLSPEC_NOVTABLE iface : public baseiface
+#else
+#define DECLARE_INTERFACE_IID_(iface, baseiface, iid)   DECLARE_INTERFACE_(iface, baseiface)
+#endif
 #endif
 
 #ifdef _UNICODE
@@ -130,9 +134,11 @@ DEFINE_GUID(IID_IScreenshotEditorObjectRendererGDI,
 //
 
 //@Begin IScreenshotEditorObject::GetFlags() flags
-#define SSEOF_NODRAG (1 << 0)
-#define SSEOF_MAYFLATTEN (1 << 1)
-#define SSEOF_FIXEDZORDER (1 << 2)
+#define SSEOF_NODRAG                        (1 << 0)
+#define SSEOF_MAYFLATTEN                    (1 << 1)
+#define SSEOF_FIXEDZORDER                   (1 << 2)
+#define SSEOF_SELECTIONTEMPLATE             (1 << 3)
+#define SSEOF_NORENDERER                    (1 << 4)
 //@End IScreenshotEditorObject::GetFlags() flags
 
 /**
