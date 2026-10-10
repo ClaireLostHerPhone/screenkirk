@@ -177,6 +177,7 @@ public:
     IScreenshotEditorObjectRenderer *_pRenderer;
     IScreenshotEditorObjectRendererGDI *_pRendererGdi;
     HBITMAP _hbmLayer;
+    RECT _rcLatestLog;
     RECT _rcLatestVisual;
 
 	CRenderObject()
@@ -185,6 +186,7 @@ public:
 		, _pRendererGdi(nullptr)
 		, _hbmLayer(nullptr)
 	{
+        ZeroMemory(&_rcLatestLog, sizeof(_rcLatestLog));
         ZeroMemory(&_rcLatestVisual, sizeof(_rcLatestVisual));
 	}
 
@@ -291,6 +293,7 @@ public:
     HRESULT CreateRenderObject(IScreenshotEditorObject *pObj);
     HRESULT RemoveRenderObject(IScreenshotEditorObject *pObj);
     HRESULT InvalidateRenderObject(IScreenshotEditorObject *pObj);
+    HRESULT ChangeSelectedObject(IScreenshotEditorObject *pObj);
 };
 
 class CEditHistoryManager
@@ -450,6 +453,8 @@ protected:
     void _CancelSelection();
     int _ComputeDragMode(POINT ptCursor, RECT *prcDraggedObj);
     HRESULT _RemoveObject(IScreenshotEditorObject *pObj);
+    IScreenshotEditorObject *_GetMousedOverObject();
+    HRESULT _SelectObject(IScreenshotEditorObject *pObj);
 
     /**
      * Event callback from the window enumeration thread from the screenshot

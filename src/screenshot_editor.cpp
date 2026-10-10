@@ -1074,21 +1074,20 @@ HRESULT CScreenshotEditorRendererGDI::Paint(HDC hdc, RECT *prcPaint)
         }
     }
     
-    // If we have a selection made and no object is selected, then we want to render the
-    // selection outline for the screenshot selection in front.
     if (_bmp.fHasAnySelectionMade)
     {
         HDC hdcSelection = fUseBackbuffer
             ? hdcBackbuffer
             : hdc;
 
-        if (!_pRenderObjSel)
+        RECT *prcTarget = _pRenderObjSel
+            ? &_pRenderObjSel->_rcLatestLog
+            : &_rcSelection;
+
+        _PaintSelectionRectangle(hdcSelection, prcTarget, _bmp.fDrawMarqueeSelection);
+        if (_bmp.fDrawSelectionSizeHelpers)
         {
-            _PaintSelectionRectangle(hdcSelection, &_rcSelection, _bmp.fDrawMarqueeSelection);
-            if (_bmp.fDrawSelectionSizeHelpers)
-            {
-                _PaintSizingHelpers(hdcSelection, &_rcSelection);
-            }
+            _PaintSizingHelpers(hdcSelection, prcTarget);
         }
     }
 
@@ -1304,6 +1303,11 @@ HRESULT CScreenshotEditorRendererGDI::InvalidateRenderObject(IScreenshotEditorOb
                 RECT rcUnion;
                 UnionRect(&rcUnion, &rcVisual, &pro->_rcLatestVisual);
 
+                if (pro == _pRenderObjSel)
+                {
+                    InflateRect(&rcUnion, c_iRadiusSelHelper / 2, c_iRadiusSelHelper / 2);
+                }
+
                 _bmp.fAnyObjectDirty = true;
                 InvalidateRect(_hwndRenderTarget, &rcUnion, FALSE);
                 return S_OK;
@@ -1313,6 +1317,36 @@ HRESULT CScreenshotEditorRendererGDI::InvalidateRenderObject(IScreenshotEditorOb
 
     assert(0);
     return E_FAIL;
+}
+
+HRESULT CScreenshotEditorRendererGDI::ChangeSelectedObject(IScreenshotEditorObject *pObj)
+{
+    if (_pRenderObjSel)
+    {
+        // We'll inflate the latest rect of the render object to account for the selection
+        // outline change when invalidating the rect. This is a bit of a hack, but it's fine.
+        InflateRect(&_pRenderObjSel->_rcLatestVisual, c_iRadiusSelHelper / 2, c_iRadiusSelHelper / 2);
+        InvalidateRenderObject(_pRenderObjSel->_pObj);
+    }
+    else
+    {
+        InvalidateRect(_hwndRenderTarget, &_rcSelectionVisual, FALSE);
+    }
+
+    CRenderObject *pro = nullptr;
+    if (pObj && SUCCEEDED(_FindRenderObjectFromInterfaceObject(pObj, &pro, nullptr)))
+    {
+        _pRenderObjSel = pro;
+
+        InflateRect(&pro->_rcLatestVisual, c_iRadiusSelHelper / 2, c_iRadiusSelHelper / 2);
+        InvalidateRenderObject(pObj);
+    }
+    else
+    {
+        _pRenderObjSel = nullptr;
+    }
+
+    return S_OK;
 }
 
 HRESULT CScreenshotEditorRendererGDI::_PaintSelectionRectangle(HDC hdc, RECT *prc, bool fUseMarquee)
@@ -1438,6 +1472,7 @@ HRESULT CScreenshotEditorRendererGDI::_PaintRenderObjectVisualBuffer(
             && SUCCEEDED(pRenderObject->_pObj->GetVisualRect(&rcVisual)))
         {
             OffsetRect(&rcVisual, rcLogical.left, rcLogical.top);
+            pRenderObject->_rcLatestLog = rcLogical;
             pRenderObject->_rcLatestVisual = rcVisual;
 
             HGDIOBJ hObjOld = SelectObject(hdcLayer, pRenderObject->_hbmLayer);
@@ -1472,7 +1507,7 @@ void CScreenshotEditorRendererGDI::_UpdateMarquee()
     if (_iSelMarqueeFrame >= 6)
         _iSelMarqueeFrame = 0;
     _bmp.fSelectionBorderAnimDirty = true;
-    InvalidateRect(_hwndRenderTarget, &_rcSelectionVisual, FALSE);
+    InvalidateRect(_hwndRenderTarget, _pRenderObjSel ? &_pRenderObjSel->_rcLatestLog : &_rcSelectionVisual, FALSE);
 }
 
 HRESULT CScreenshotEditorRendererGDI::_StartSelectionMarqueeTimer()
@@ -2154,63 +2189,84 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
         }
         else if (_tool == SSET_DRAG)
         {
+            RECT rcTarget = _rcSelection;
+            if (_pSelectedObject)
+            {
+                _pSelectedObject->GetLogicalRect(&rcTarget);
+            }
+
             if (_iToolMode == DRAGM_DRAG)
             {
                 // This is a bit of a lazy implementation, but I decided to go with it because
                 // I am bad at math.
-                RECT rcOldSelection = _rcSelection;
-                _rcSelection = _rcDragBegin;
+                rcTarget = _rcDragBegin;
 
                 int iX = (x - _rcDragBegin.left - (_ptSelectionOrigin.x - _rcDragBegin.left));
                 int iY = (y - _rcDragBegin.top - (_ptSelectionOrigin.y - _rcDragBegin.top));
 
-                OffsetRect(&_rcSelection, iX, iY);
+                OffsetRect(&rcTarget, iX, iY);
 
-                _pRenderer->UpdateSelection(&_rcSelection);
+                if (!_pSelectedObject)
+                {
+                    _rcSelection = rcTarget;
+                    _pRenderer->UpdateSelection(&rcTarget);
+                }
+                else
+                {
+                    _pSelectedObject->Move(&rcTarget);
+                }
             }
             else // Sizing modes:
             {
-                RECT rcOld = _rcSelection;
+                RECT rcOld = rcTarget;
 
                 if (_iToolMode & DRAGM_SIZEW)
                 {
-                    _rcSelection.left = x;
+                    rcTarget.left = x;
                 }
                 else if (_iToolMode & DRAGM_SIZEE)
                 {
-                    _rcSelection.right = x;
+                    rcTarget.right = x;
                 }
 
                 if (_iToolMode & DRAGM_SIZEN)
                 {
-                    _rcSelection.top = y;
+                    rcTarget.top = y;
                 }
                 else if (_iToolMode & DRAGM_SIZES)
                 {
-                    _rcSelection.bottom = y;
+                    rcTarget.bottom = y;
                 }
 
                 // If the resulting rectangle is "negative", then correct it
                 // to make all coordinates positive, and flip the tool mode
                 // accordingly.
-                if (_rcSelection.right < rcOld.left)
+                if (rcTarget.right < rcOld.left)
                 {
-                    _rcSelection.left = _rcSelection.right;
-                    _rcSelection.right = rcOld.left;
+                    rcTarget.left = rcTarget.right;
+                    rcTarget.right = rcOld.left;
 
                     // Invert the current tool mode:
                     _iToolMode ^= (DRAGM_SIZEE | DRAGM_SIZEW);
                 }
-                if (_rcSelection.bottom < rcOld.top)
+                if (rcTarget.bottom < rcOld.top)
                 {
-                    _rcSelection.top = _rcSelection.bottom;
-                    _rcSelection.bottom = rcOld.top;
+                    rcTarget.top = rcTarget.bottom;
+                    rcTarget.bottom = rcOld.top;
 
                     // Invert the current tool mode:
                     _iToolMode ^= (DRAGM_SIZES | DRAGM_SIZEN);
                 }
 
-                _pRenderer->UpdateSelection(&_rcSelection);
+                if (!_pSelectedObject)
+                {
+                    _rcSelection = rcTarget;
+                    _pRenderer->UpdateSelection(&rcTarget);
+                }
+                else
+                {
+                    _pSelectedObject->Move(&rcTarget);
+                }
             }
         }
         else if (_IsExtensionTool() && (_pExtTool->GetFlags() & SSETF_DRAWSELECTION))
@@ -2241,7 +2297,11 @@ LRESULT CScreenshotEditorWindow::_OnMouseMove(int x, int y, WPARAM flags)
         POINT ptCursor;
         ptCursor.x = x;
         ptCursor.y = y;
-        int dm = _ComputeDragMode(ptCursor, &_rcSelection);
+
+        RECT rcTarget = _rcSelection;
+        if (_pSelectedObject)
+            _pSelectedObject->GetLogicalRect(&rcTarget);
+        int dm = _ComputeDragMode(ptCursor, &rcTarget);
 
         if (dm != _iToolMode)
         {
@@ -2278,7 +2338,20 @@ LRESULT CScreenshotEditorWindow::_OnMouseLButtonDown(int x, int y, WPARAM flags)
 
     if (_tool == SSET_DRAG)
     {
-        _rcDragBegin = _rcSelection;
+        if (_iToolMode == DRAGM_DRAG)
+        {
+            IScreenshotEditorObject *pObjHovered = _GetMousedOverObject();
+            if (pObjHovered)
+            {
+                ASSERT_KEEP(SUCCEEDED(_SelectObject(pObjHovered)));
+                ASSERT_KEEP(SUCCEEDED(pObjHovered->GetLogicalRect(&_rcDragBegin)));
+            }
+            else
+            {
+                _SelectObject(nullptr);
+                _rcDragBegin = _rcSelection;
+            }
+        }
     }
     else if (_IsExtensionTool())
     {
@@ -2757,6 +2830,53 @@ HRESULT CScreenshotEditorWindow::_RemoveObject(IScreenshotEditorObject *pObj)
     return E_NOT_SET;
 }
 
+IScreenshotEditorObject *CScreenshotEditorWindow::_GetMousedOverObject()
+{
+    POINT ptCursor;
+    if (GetCursorPos(&ptCursor))
+    {
+        ScreenToClient(_hwnd, &ptCursor);
+
+        // We go backwards through the objects array since higher entry position = higher Z-order.
+        for (int i = _vObjs.GetSize() - 1; i >= 0; i--)
+        {
+            IScreenshotEditorObject *pObj = _vObjs[i];
+
+            RECT rcLog;
+            if (SUCCEEDED(pObj->GetLogicalRect(&rcLog)))
+            {
+                RECT rcScratch = { 0 };
+                RECT rcCursor = { 0 };
+                rcCursor.left = ptCursor.x;
+                rcCursor.top = ptCursor.y;
+                rcCursor.right = rcCursor.left + 1;
+                rcCursor.bottom = rcCursor.top + 1;
+                if (IntersectRect(&rcScratch, &rcLog, &rcCursor))
+                {
+                    return pObj;
+                }
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+HRESULT CScreenshotEditorWindow::_SelectObject(IScreenshotEditorObject *pObj)
+{
+    RECT rcOld = { 0 };
+
+    if (_pSelectedObject)
+        _pSelectedObject->Release();
+
+    _pSelectedObject = pObj;
+
+    if (_pSelectedObject)
+        _pSelectedObject->AddRef();
+
+    return _pRenderer->ChangeSelectedObject(pObj);
+}
+
 HRESULT CScreenshotEditorWindow::_OnGetWindowPositions()
 {
     _fEnumeratedWindows = true;
@@ -2894,8 +3014,9 @@ STDMETHODIMP CScreenshotEditorWindow::SetSelectedRegion(RECT *prc)
 
 STDMETHODIMP CScreenshotEditorWindow::SetSelectedObject(IScreenshotEditorObject *pObj)
 {
-    // TODO: Implement!
-    return E_NOTIMPL;
+    if (!pObj)
+        return E_POINTER;
+    return _SelectObject(pObj);
 }
 
 bool CScreenshotEditorWindow::IsCursorShown()
